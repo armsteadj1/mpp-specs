@@ -24,7 +24,6 @@ draft and which parts are generic additions for other processors.
 | `allowance.currency` | `usage_limits.currency` | Direct mapping. |
 | `allowance.expiresAt` | `usage_limits.expires_at` | Direct mapping. |
 | `allowance.recipientId` | `seller_details.networkId` / `methodDetails.networkId` | Stripe binds issuance to the seller's Business Network Profile ID. Generic SPT calls this recipient scope because other processors may use merchant IDs, seller IDs, account IDs, or profile IDs. |
-| `allowance.usageCount` | SPT single-use behavior | Stripe SPTs are single-use, but the Stripe draft does not expose a `usageCount` field. Generic SPT makes the allowance constraint explicit for processors that need it. |
 | `allowance.reason` | No direct Stripe field | Generic addition for delegated-payment policy and future recurring, metered, or session-scoped processors. |
 | `sessionId` | No direct Stripe field | Generic addition for checkout/session binding and server reconciliation. A Stripe adapter can copy it into metadata. |
 | `methodDetails.processors[].id` | Implied by `method="stripe"` in Stripe draft | Generic addition so one `method="spt"` challenge can offer Stripe or another processor without creating one method per processor. |
@@ -95,7 +94,6 @@ Decoded `request`:
     "currency": "usd",
     "recipientId": "profile_merchant_123",
     "sessionId": "checkout_abc123",
-    "usageCount": 1,
     "expiresAt": "2026-06-19T19:30:00Z"
   },
   "methodDetails": {

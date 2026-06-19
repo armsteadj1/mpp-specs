@@ -185,7 +185,7 @@ Settlement Policy:
 Allowance:
 : A bounded authorization envelope for delegated payment use. An allowance
   commonly includes maximum amount, currency, recipient or merchant identifier,
-  checkout/session identifier, expiry, reason, and usage count.
+  checkout/session identifier, expiry, and reason.
 
 Processor Profile:
 : A processor-declared SPT capability profile. A processor profile identifies
@@ -400,7 +400,6 @@ form without requiring checkout-specific field names.
 | `currency` | string | OPTIONAL | Currency for the allowance. MUST match `currency` when present. |
 | `recipientId` | string | OPTIONAL | Processor-recognized recipient, seller, merchant, account, or profile identifier authorized to use the token. SHOULD match `methodDetails.recipient.id` when that field is present. |
 | `sessionId` | string | OPTIONAL | Session, quote, checkout, or order-attempt identifier authorized to use the token. |
-| `usageCount` | integer | OPTIONAL | Number of permitted redemptions. For `charge`, this MUST be `1` when present. |
 | `expiresAt` | string | OPTIONAL | RFC3339 token allowance expiry. MUST NOT be later than the challenge `expires` auth-param. |
 
 Processors MUST enforce the effective allowance. The effective allowance is the
@@ -603,7 +602,7 @@ At minimum, the processor MUST associate the SPT with:
 * amount limit;
 * currency;
 * recipient identifier or recipient account;
-* allowance reason and usage count;
+* allowance reason;
 * checkout/session/resource identifier, when provided;
 * expiration time;
 * issuing client, payer, or payer account context;
@@ -1141,8 +1140,8 @@ A conforming processor MUST:
 * issue opaque single-use SPTs;
 * scope SPTs to amount, currency, expiry, payer authorization, and recipient or
   merchant account context;
-* enforce allowance constraints including maximum amount, usage count, and
-  recipient/session scope when supplied;
+* enforce allowance constraints including maximum amount and recipient/session
+  scope when supplied;
 * reject replay;
 * reject scope mismatch;
 * provide a redemption operation that consumes an SPT atomically;
@@ -1216,7 +1215,6 @@ Decoded `request`:
     "currency": "usd",
     "recipientId": "recipient_9k82h",
     "sessionId": "session_abc123",
-    "usageCount": 1,
     "expiresAt": "2026-06-19T19:30:00Z"
   },
   "profile": "spt-charge-2026-06",
@@ -1346,7 +1344,6 @@ Content-Type: application/json
     "currency": "usd",
     "recipientId": "recipient_9k82h",
     "sessionId": "session_abc123",
-    "usageCount": 1,
     "expiresAt": "2026-06-19T19:30:00Z"
   },
   "challenge": {
@@ -1371,8 +1368,7 @@ Response:
     "currency": "usd",
     "recipientId": "recipient_9k82h",
     "challengeId": "ch_7Jr8nVwS2mQ",
-    "sessionId": "session_abc123",
-    "usageCount": 1
+    "sessionId": "session_abc123"
   }
 }
 ~~~
