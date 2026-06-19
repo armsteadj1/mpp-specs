@@ -417,7 +417,6 @@ The `methodDetails` object has the following structure:
 | `processors` | array[object] | OPTIONAL | Processor options the client enabler may choose from. |
 | `recipient` | object | OPTIONAL | Processor-recognized recipient, seller, merchant, account, or profile scope to which the SPT should be bound when not fully implied by the selected processor profile. |
 | `processorOptions` | object | OPTIONAL | Processor-specific extension fields. |
-| `metadata` | object | OPTIONAL | Non-sensitive key-value metadata for client display or reconciliation hints. |
 
 Unknown fields in `methodDetails` MUST be ignored by clients unless the client
 has negotiated support for a strict extension profile that says otherwise.
@@ -492,6 +491,14 @@ the processor cannot issue or redeem the SPT under its authentication or risk
 policy, issuance or redemption fails using processor-specific error handling
 that the server enabler maps to this profile's problem details.
 
+Before minting an SPT, the processor MUST evaluate the selected payment source
+under the merchant, recipient, or processor profile identified by the challenge.
+This evaluation includes the merchant's configured accepted payment methods,
+Strong Customer Authentication or equivalent payment-source verification
+requirements, exemption policy, regional rules, and risk controls. If the
+processor cannot verify that the payment source is eligible for that merchant
+context, it MUST NOT mint the SPT.
+
 ## `processorOptions`
 
 The `processorOptions` object is reserved for processor-specific extension
@@ -521,10 +528,6 @@ The SPT payload contains:
 | --- | --- | --- | --- |
 | `sharedPaymentToken` | string | REQUIRED | Opaque single-use token issued by the processor. |
 | `processor` | string | REQUIRED | Processor identifier that issued or redeems the token. |
-| `tokenType` | string | OPTIONAL | Token type. Defaults to `shared-payment-token`. |
-| `allowanceReference` | string | OPTIONAL | Processor or client reference for the allowance used to issue the token. |
-| `clientReference` | string | OPTIONAL | Client-side reference for debugging or reconciliation. |
-| `processorPayload` | object | OPTIONAL | Processor-specific extension payload. |
 
 The `sharedPaymentToken` value is a bearer credential. Servers MUST NOT log it
 in plaintext. Servers SHOULD store only a keyed hash or processor reference
@@ -552,6 +555,13 @@ At minimum, the processor MUST associate the SPT with:
 * single-use redemption state;
 * processor environment;
 * token creation timestamp.
+
+Processors SHOULD provide an SPT issuance operation that accepts the full
+Payment challenge context, including the challenge `id`, `realm`, `method`,
+`intent`, `expires`, and encoded `request` value. When the full challenge is
+provided, the processor SHOULD derive token scope from that challenge instead
+of requiring the client enabler to translate every generic SPT field into
+processor-specific issuance parameters.
 
 Processors SHOULD additionally bind:
 
@@ -1082,6 +1092,10 @@ A conforming processor MUST:
   merchant account context;
 * enforce allowance constraints including maximum amount and recipient/session
   scope when supplied;
+* verify the selected payment source is eligible under the merchant, recipient,
+  or processor profile before minting an SPT;
+* complete any required Strong Customer Authentication or equivalent
+  payment-source verification before minting an SPT;
 * reject replay;
 * reject scope mismatch;
 * provide a redemption operation that consumes an SPT atomically;
@@ -1177,9 +1191,6 @@ Decoded `request`:
       "origin": "https://api.example.com",
       "country": "US",
       "category": "digital-services"
-    },
-    "metadata": {
-      "product": "premium-api-monthly"
     }
   }
 }
@@ -1222,10 +1233,7 @@ Decoded credential:
   },
   "payload": {
     "sharedPaymentToken": "tok_shared_test_8xY2mN4qP",
-    "processor": "examplepay",
-    "tokenType": "shared-payment-token",
-    "allowanceReference": "allow_72nP",
-    "clientReference": "client_attempt_456"
+    "processor": "examplepay"
   }
 }
 ~~~
@@ -1259,30 +1267,21 @@ POST /shared-payment-tokens
 Content-Type: application/json
 
 {
-  "amount": "5000",
-  "currency": "usd",
-  "recipient": {
-    "id": "recipient_9k82h",
-    "displayName": "Example API, Inc."
-  },
-  "allowance": {
-    "reason": "one-time",
-    "maxAmount": "5000",
-    "currency": "usd",
-    "recipientId": "recipient_9k82h",
-    "sessionId": "session_abc123",
-    "expiresAt": "2026-06-19T19:30:00Z"
-  },
-  "challenge": {
+  "paymentMethodId": "pm_123",
+  "paymentChallenge": {
     "id": "ch_7Jr8nVwS2mQ",
     "realm": "api.example.com",
     "method": "spt",
     "intent": "charge",
     "expires": "2026-06-19T19:30:00Z",
-    "requestHash": "sha256:..."
+    "request": "<base64url-jcs-json>"
   }
 }
 ~~~
+
+The processor decodes the `request` value, applies merchant and processor
+profile configuration, verifies the selected payment method is eligible for the
+merchant context, and mints an SPT scoped to the resulting challenge terms.
 
 Response:
 
@@ -1340,6 +1339,7 @@ Response:
 A processor can participate in this profile by implementing:
 
 * SPT issuance scoped to amount, currency, recipient, expiry, and payer approval.
+* SPT issuance endpoints that can accept the full MPP `spt` challenge context.
 * SPT redemption by authorized server-side merchants or platforms.
 * Single-use token enforcement.
 * Idempotent redemption.

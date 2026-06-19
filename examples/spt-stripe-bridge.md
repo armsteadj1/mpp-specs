@@ -19,7 +19,7 @@ draft and which parts are generic additions for other processors.
 | `amount` | `amount` | Direct mapping. Stripe uses the amount when creating the payment after SPT issuance. |
 | `currency` | `currency` | Direct mapping. Also maps into `usage_limits.currency` during SPT creation. |
 | `description` | `description` | Direct mapping for payer display/context. |
-| `externalId` | `externalId` | Direct mapping at the challenge level. Stripe's credential payload also has optional `externalId`; the generic credential names this `clientReference` to avoid confusing server and client references. |
+| `externalId` | `externalId` | Direct mapping at the challenge level. |
 | `allowance.maxAmount` | `usage_limits.max_amount` | Direct mapping. This is the maximum amount the SPT may authorize. |
 | `allowance.currency` | `usage_limits.currency` | Direct mapping. |
 | `allowance.expiresAt` | `usage_limits.expires_at` | Direct mapping. |
@@ -32,10 +32,25 @@ draft and which parts are generic additions for other processors.
 | `methodDetails.recipient.displayName` | No direct Stripe field | Generic optional display/safety context. |
 | `payload.sharedPaymentToken` | `payload.spt` | Direct mapping with a processor-neutral name. |
 | `payload.processor` | Implied by `method="stripe"` in Stripe draft | Generic addition so the server knows which processor adapter must redeem the opaque SPT. |
-| `payload.tokenType` | No direct Stripe field | Generic optional discriminator. Defaults to `shared-payment-token`. |
-| `payload.allowanceReference` | Stripe SPT ID | Generic optional reference to the allowance/token issuance result. |
-| `payload.clientReference` | `payload.externalId` | Direct conceptual mapping, renamed to avoid collision with server-side `externalId`. |
-| `processorPayload` | No direct Stripe field | Generic extension escape hatch. Stripe-specific data should stay here or inside the adapter, not become generic wire vocabulary. |
+
+## Generic Additions Compared to Stripe SPT
+
+The generic SPT method adds these useful capabilities on top of the Stripe SPT
+draft shape:
+
+* one `method="spt"` challenge can offer Stripe and other processors through
+  `methodDetails.processors[]`;
+* the credential carries `payload.processor`, so the server enabler knows which
+  processor adapter must redeem the opaque SPT;
+* `recipient` generalizes Stripe's Business Network Profile / `networkId`
+  concept for processors that use merchant IDs, seller IDs, account IDs, or
+  profile IDs;
+* `sessionId` gives HTTP Payment and processor integrations a common checkout,
+  quote, or resource-access correlation value;
+* `allowance` gives delegated-agent payment policies a portable envelope for
+  maximum amount, currency, recipient scope, expiry, and reason;
+* the processor can accept the full MPP `spt` challenge payload during token
+  issuance and derive processor-specific scope internally.
 
 Stripe-specific fields that the generic method intentionally does not expose:
 
@@ -117,8 +132,9 @@ Decoded `request`:
 
 ## Client Enabler: Create a Stripe SPT
 
-The client enabler maps the generic allowance to Stripe SPT creation.
-The exact Stripe API shape may change; this is intentionally illustrative.
+The client enabler passes the selected payment method and the original MPP SPT
+challenge to the processor. The exact Stripe API shape may change; this is
+intentionally illustrative and may not be supported by Stripe today.
 The generic `recipient.id` maps to Stripe's business/network profile identifier
 used in `seller_details.networkId`.
 Stripe decides whether additional authentication or risk checks are required
@@ -127,22 +143,22 @@ prove those processor-side decisions.
 
 ~~~ javascript
 const sharedPaymentToken = await stripe.sharedPayment.issuedTokens.create({
-  payment_method: "pm_123",
-  usage_limits: {
-    currency: "usd",
-    max_amount: 5000,
-    expires_at: Math.floor(Date.parse("2026-06-19T19:30:00Z") / 1000)
-  },
-  seller_details: {
-    networkId: "profile_merchant_123"
-  },
-  metadata: {
-    challenge_id: "ch_spt_123",
-    session_id: "checkout_abc123",
-    external_id: "order_12345"
+  paymentMethodId: "pm_123",
+  paymentChallenge: {
+    id: "ch_spt_123",
+    realm: "api.merchant.example",
+    method: "spt",
+    intent: "charge",
+    expires: "2026-06-19T19:30:00Z",
+    request: "<base64url-jcs-json>"
   }
 });
 ~~~
+
+An SPT-aware Stripe endpoint would decode the challenge `request`, derive
+`usage_limits` and `seller_details.networkId`, apply the merchant's accepted
+payment method settings, complete any required SCA or payment-source
+verification, and only then mint the SPT.
 
 ## Credential
 
@@ -161,10 +177,7 @@ opaque `sharedPaymentToken`.
   },
   "payload": {
     "sharedPaymentToken": "spt_1N4Zv32eZvKYlo2CPhVPkJlW",
-    "processor": "stripe",
-    "tokenType": "shared-payment-token",
-    "allowanceReference": "spt_1N4Zv32eZvKYlo2CPhVPkJlW",
-    "clientReference": "client_attempt_456"
+    "processor": "stripe"
   }
 }
 ~~~
