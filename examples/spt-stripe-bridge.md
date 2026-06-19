@@ -8,6 +8,49 @@ The important boundary is that Stripe-specific objects stay inside the
 client-enabler and server-enabler adapters. The HTTP Payment challenge and
 credential use the generic SPT shape.
 
+## Stripe Mapping Summary
+
+This example intentionally does not copy Stripe field names into the generic
+method. The mapping below shows which parts come directly from the Stripe SPT
+draft and which parts are generic additions for other processors.
+
+| Generic SPT field | Stripe SPT draft equivalent | Notes |
+| --- | --- | --- |
+| `amount` | `amount` | Direct mapping. Stripe uses the amount when creating the payment after SPT issuance. |
+| `currency` | `currency` | Direct mapping. Also maps into `usage_limits.currency` during SPT creation. |
+| `description` | `description` | Direct mapping for payer display/context. |
+| `externalId` | `externalId` | Direct mapping at the challenge level. Stripe's credential payload also has optional `externalId`; the generic credential names this `clientReference` to avoid confusing server and client references. |
+| `allowance.maxAmount` | `usage_limits.max_amount` | Direct mapping. This is the maximum amount the SPT may authorize. |
+| `allowance.currency` | `usage_limits.currency` | Direct mapping. |
+| `allowance.expiresAt` | `usage_limits.expires_at` | Direct mapping. |
+| `allowance.recipientId` | `seller_details.networkId` / `methodDetails.networkId` | Stripe binds issuance to the seller's Business Network Profile ID. Generic SPT calls this recipient scope because other processors may use merchant IDs, seller IDs, account IDs, or profile IDs. |
+| `allowance.usageCount` | SPT single-use behavior | Stripe SPTs are single-use, but the Stripe draft does not expose a `usageCount` field. Generic SPT makes the allowance constraint explicit for processors that need it. |
+| `allowance.reason` | No direct Stripe field | Generic addition for delegated-payment policy and future recurring, metered, or session-scoped processors. |
+| `sessionId` | No direct Stripe field | Generic addition for checkout/session binding and server reconciliation. A Stripe adapter can copy it into metadata. |
+| `methodDetails.processors[].id` | Implied by `method="stripe"` in Stripe draft | Generic addition so one `method="spt"` challenge can offer Stripe or another processor without creating one method per processor. |
+| `methodDetails.processors[].profile` | No direct Stripe field | Generic addition for processor-declared SPT capability/profile selection. |
+| `methodDetails.recipient.id` | `methodDetails.networkId` / `seller_details.networkId` | Direct conceptual mapping, but generic SPT makes it optional because some processor profiles may imply merchant/account scope. |
+| `methodDetails.recipient.displayName` | No direct Stripe field | Generic optional display/safety context. |
+| `methodDetails.tokenBinding` | No direct Stripe field | Generic addition to make anti-replay and challenge binding explicit across processors. |
+| `methodDetails.exemptionContext` | No direct Stripe field | Generic optional hint for processors that accept merchant/product facts for SCA or exemption decisions. Stripe's draft says Stripe.js may prompt for 3DS or biometrics, but it does not define exemption request fields. |
+| `payload.sharedPaymentToken` | `payload.spt` | Direct mapping with a processor-neutral name. |
+| `payload.processorId` | Implied by `method="stripe"` in Stripe draft | Generic addition so the server knows which processor adapter must redeem the opaque SPT. |
+| `payload.tokenType` | No direct Stripe field | Generic optional discriminator. Defaults to `shared-payment-token`. |
+| `payload.allowanceReference` | Stripe SPT ID | Generic optional reference to the allowance/token issuance result. |
+| `payload.clientReference` | `payload.externalId` | Direct conceptual mapping, renamed to avoid collision with server-side `externalId`. |
+| `processorPayload` | No direct Stripe field | Generic extension escape hatch. Stripe-specific data should stay here or inside the adapter, not become generic wire vocabulary. |
+
+Stripe-specific fields that the generic method intentionally does not expose:
+
+* `paymentMethodTypes`: handled by the processor/profile. Generic SPT should not
+  force the merchant to enumerate card, Link, bank account, or wallet routing.
+* `payment_method`: selected inside the client/processor flow, not in the HTTP
+  challenge.
+* PaymentIntent and Connect settlement parameters: derived from trusted
+  server-side settlement policy after the generic credential is validated.
+* 3DS/biometric challenge details: handled by Stripe.js and Stripe. The generic
+  credential MUST NOT carry raw authentication values.
+
 ## Flow
 
 1. Server returns a `402 Payment Required` challenge with `method="spt"`.
