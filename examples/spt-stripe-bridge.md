@@ -98,6 +98,14 @@ Decoded `request`:
       "payerInteraction": "step-up-if-required",
       "delegation": "payer-policy",
       "authenticationContext": ["3ds", "sca"]
+    },
+    "transactionContext": {
+      "commerceType": "one-time",
+      "payerPresence": "payer-present",
+      "deliveryType": "digital",
+      "challengePreference": "no-preference",
+      "exemptionPreference": "transaction-risk-analysis",
+      "merchantCountry": "US"
     }
   }
 }
@@ -107,6 +115,9 @@ Decoded `request`:
 
 The client enabler maps the generic allowance to Stripe SPT creation.
 The exact Stripe API shape may change; this is intentionally illustrative.
+The client enabler uses `transactionContext` and processor-side payer,
+instrument, region, and risk state to determine whether 3DS/SCA is required
+before issuing the SPT.
 
 ~~~ javascript
 const sharedPaymentToken = await stripe.sharedPayment.issuedTokens.create({

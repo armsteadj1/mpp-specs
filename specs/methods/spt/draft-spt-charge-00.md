@@ -412,6 +412,7 @@ The `methodDetails` object has the following structure:
 | `acceptedInstrumentTypes` | array[string] | OPTIONAL | Instrument classes the server can accept through this processor. |
 | `tokenBinding` | object | OPTIONAL | Fields the client enabler SHOULD request the processor to bind into token scope. |
 | `assurance` | object | OPTIONAL | Payer-authentication and risk requirements. |
+| `transactionContext` | object | OPTIONAL | Non-sensitive transaction context used for authentication, risk, and exemption decisions. |
 | `riskSignalRequirements` | object | OPTIONAL | Risk signal categories requested for token issuance. |
 | `settlementCapabilities` | array[string] | OPTIONAL | High-level settlement capabilities the server may use. Informational unless challenge-bound. |
 | `processorOptions` | object | OPTIONAL | Processor-specific extension fields. |
@@ -555,6 +556,32 @@ requirements.
 This field is advisory to the client enabler and processor. Processors MAY
 apply stronger controls than requested.
 
+## `transactionContext` Object
+
+The `transactionContext` object provides non-sensitive context that can affect
+authentication, risk, and exemption decisions during SPT issuance.
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| `commerceType` | string | OPTIONAL | `one-time`, `recurring-initial`, `recurring-subsequent`, `merchant-initiated`, `unscheduled`, or a registered extension value. |
+| `payerPresence` | string | OPTIONAL | `payer-present`, `payer-not-present`, or `delegated-agent`. |
+| `deliveryType` | string | OPTIONAL | `digital`, `physical`, `service`, or a registered extension value. |
+| `challengePreference` | string | OPTIONAL | `no-preference`, `challenge-requested`, or `challenge-required`. |
+| `exemptionPreference` | string | OPTIONAL | Requested exemption treatment, such as `none`, `low-value`, `transaction-risk-analysis`, `trusted-beneficiary`, or `secure-corporate`. |
+| `merchantCountry` | string | OPTIONAL | ISO 3166 country code for the merchant or payee. |
+| `payerCountry` | string | OPTIONAL | ISO 3166 country code for the payer, if known without exposing sensitive data. |
+| `metadata` | object | OPTIONAL | Additional non-sensitive context for processor-specific policy. |
+
+Servers SHOULD include `transactionContext` when the server knows facts that
+can affect whether step-up authentication is required. Examples include whether
+the payment is a one-time customer-initiated transaction, the first transaction
+in a recurring relationship, a later merchant-initiated transaction, or a
+delegated-agent purchase.
+
+Servers MUST NOT include raw authentication data, payment instrument details,
+passwords, one-time passcodes, biometric data, or unnecessary payer personal
+data in `transactionContext`.
+
 ### Step-Up Authentication
 
 3-D Secure (3DS), Strong Customer Authentication (SCA), biometric
@@ -565,12 +592,19 @@ The server expresses step-up requirements or preferences through:
 
 * `methodDetails.assurance.payerInteraction`;
 * `methodDetails.assurance.authenticationContext`;
+* `methodDetails.transactionContext`;
 * `methodDetails.paymentHandlers[].requiredInterventions`.
 
 The client enabler and processor are responsible for performing any required
 step-up flow and for binding the result into the issued SPT or processor-side
 token record. The server does not orchestrate 3DS or SCA directly through the
 generic SPT credential.
+
+The server does not always know whether step-up is required when it returns the
+402 challenge. It SHOULD provide the non-sensitive facts it knows, and the
+processor SHOULD make the final decision using challenge context, payer
+context, selected instrument, regional rules, exemptions, fraud/risk signals,
+and processor policy.
 
 If step-up is required and not yet complete, the processor SHOULD refuse to
 issue an SPT. If the server attempts redemption and the processor determines
