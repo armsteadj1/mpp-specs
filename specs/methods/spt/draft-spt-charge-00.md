@@ -39,28 +39,6 @@ normative:
     author:
       - name: Jake Moxey
     date: 2026-03
-
-informative:
-  ACP-ARCHITECTURE:
-    target: https://www.agenticcommerce.dev/docs/concepts/architecture
-    title: Agentic Commerce Protocol Architecture
-    author:
-      - org: Agentic Commerce Protocol
-  ACP-DELEGATE-PAYMENT:
-    target: https://www.agenticcommerce.dev/docs/reference/payments
-    title: Agentic Commerce Protocol Delegate Payment
-    author:
-      - org: Agentic Commerce Protocol
-  ACP-CAPABILITY-NEGOTIATION:
-    target: https://www.agenticcommerce.dev/docs/concepts/capability-negotiation
-    title: Agentic Commerce Protocol Capability Negotiation
-    author:
-      - org: Agentic Commerce Protocol
-  OPENAI-DELEGATED-PAYMENT:
-    target: https://developers.openai.com/commerce/specs/payment
-    title: OpenAI Delegated Payment Specification
-    author:
-      - org: OpenAI
 ---
 
 --- abstract
@@ -348,39 +326,12 @@ The SPT charge flow is:
 SPT issuance and SPT redemption MAY be performed by the same processor endpoint
 or by different endpoints within the same processor trust domain.
 
-## ACP Alignment and Reusable Ideas
+## Payment Handler Selection
 
-The Agentic Commerce Protocol (ACP) uses a useful separation of concerns:
-
-* checkout session lifecycle is handled between agent and seller;
-* delegated payment tokenization is handled between agent and payment provider;
-* completion passes a scoped payment token back to the seller;
-* the seller remains responsible for order creation, payment processing,
-  fulfillment, refunds, chargebacks, and compliance.
-
-This profile adopts the same architectural lesson without depending on ACP
-checkout semantics. SPT should be treated as a portable delegated-payment
-primitive, not as a complete checkout protocol.
-
-For HTTP Payment Authentication, the equivalent split is:
-
-* the Payment challenge expresses the amount, currency, payee, processor, and
-  resource access terms;
-* the client enabler obtains a delegated token from a compatible processor;
-* the Payment credential relays only the scoped token and minimal routing data;
-* the server redeems the token under trusted server-side settlement policy.
-
-Implementations that also support ACP MAY map an ACP checkout session to
-`sessionId`, an ACP allowance to the SPT `allowance` object, an ACP payment
-handler to `methodDetails.paymentHandlers[]`, and an ACP delegated payment token
-to `payload.sharedPaymentToken`.
-
-## Capability Negotiation and Payment Handlers
-
-ACP's most reusable idea is payment-handler negotiation. The seller advertises
-which payment handlers it accepts, including whether a handler uses delegated
-payment, which processor it uses, which credential and instrument schemas are
-accepted, and which user interventions may be required.
+A server can advertise one or more SPT-compatible payment handlers. Each
+handler describes a concrete route for fulfilling the payment challenge,
+including the processor, delegated-payment credential type, accepted
+instrument types, and any payer interventions that may be required.
 
 Payment HTTP Authentication can represent the same pattern in two ways:
 
@@ -432,8 +383,7 @@ Challenge expiry is conveyed by the `expires` auth-param in
 ### `allowance` Object
 
 The `allowance` object expresses delegated-payment constraints in a portable
-form. It is inspired by ACP's delegated payment allowance model but avoids
-checkout-specific field names.
+form without requiring checkout-specific field names.
 
 | Field | Type | Required | Description |
 | --- | --- | --- | --- |
@@ -526,7 +476,7 @@ responsible for determining whether a given payer instrument is eligible.
 ### `paymentHandlers`
 
 The `paymentHandlers` array describes concrete payment routes available for the
-challenge. It is the generic SPT equivalent of ACP payment handlers.
+challenge.
 
 | Field | Type | Required | Description |
 | --- | --- | --- | --- |
