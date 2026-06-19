@@ -103,7 +103,7 @@ This profile is designed to:
 * let clients support multiple processors through the same payment flow;
 * let servers expose one payment method profile while routing settlement to
   different processors;
-* prevent client-controlled settlement routing, fee manipulation, and payee
+* prevent client-controlled settlement routing, fee manipulation, and recipient
   substitution;
 * support direct merchant, platform, marketplace, facilitator, and multi-party
   settlement models;
@@ -166,7 +166,7 @@ Server Enabler:
 Payer:
 : The person, agent, account, or organization authorizing the payment.
 
-Payee:
+Recipient:
 : The merchant, platform, seller, or recipient that is intended to receive or
   benefit from the payment.
 
@@ -178,13 +178,13 @@ Settlement:
   captured, or otherwise payable transaction according to processor rules.
 
 Settlement Policy:
-: Server-side trusted configuration that determines account context, payee,
+: Server-side trusted configuration that determines account context, recipient,
   platform fee, split settlement, transfer routing, statement descriptors,
   metadata, and reconciliation identifiers.
 
 Allowance:
 : A bounded authorization envelope for delegated payment use. An allowance
-  commonly includes maximum amount, currency, payee or merchant identifier,
+  commonly includes maximum amount, currency, recipient or merchant identifier,
   checkout/session identifier, expiry, reason, and usage count.
 
 Processor Profile:
@@ -210,7 +210,7 @@ Challenge Binding:
 
 Token Scope:
 : The bounded set of constraints under which an SPT may be redeemed, including
-  amount, currency, payee, processor, expiration, challenge identifier, resource
+  amount, currency, recipient, processor, expiration, challenge identifier, resource
   origin, request body digest, and any additional constraints
   agreed by the processor and client enabler.
 
@@ -337,7 +337,7 @@ The generic SPT method does not require the server to enumerate card, wallet,
 bank-account, network-token, or other underlying payment routes. An SPT is the
 credential type. The selected processor is responsible for determining which
 underlying instruments, payer authentication methods, risk checks, exemptions,
-and settlement paths are available for the payee and processor profile.
+and settlement paths are available for the recipient and processor profile.
 
 For interoperability, servers that support more than one processor SHOULD use
 one generic `method="spt"` challenge with `methodDetails.processors[]`. This
@@ -379,8 +379,7 @@ The following fields are shared across SPT charge requests:
 | `description` | string | OPTIONAL | Human-readable description for payer display only. MUST NOT be used as the source of truth for verification. |
 | `externalId` | string | OPTIONAL | Server-side order, cart, invoice, session, or resource identifier. |
 | `sessionId` | string | OPTIONAL | Checkout, quote, order-attempt, or resource-access session identifier to which the SPT should be scoped. |
-| `recipient` | string | OPTIONAL | Generic recipient identifier. If present, it MUST be challenge-bound. |
-| `allowance` | object | OPTIONAL | Explicit delegated-payment allowance constraints. If omitted, amount/currency/payee/expires form the minimum allowance. |
+| `allowance` | object | OPTIONAL | Explicit delegated-payment allowance constraints. If omitted, amount/currency/expires and processor profile form the minimum allowance. |
 | `profile` | string | OPTIONAL | SPT profile version identifier. |
 | `methodDetails` | object | REQUIRED | SPT-specific details needed by the client enabler to obtain a token. |
 
@@ -404,14 +403,15 @@ form without requiring checkout-specific field names.
 | `reason` | string | OPTIONAL | Usage reason. Initial values: `one-time`, `metered`, `session`, `subscription-initial`. Defaults to `one-time` for the charge intent. |
 | `maxAmount` | string | OPTIONAL | Maximum permitted charge amount in base units. MUST NOT exceed `amount`. |
 | `currency` | string | OPTIONAL | Currency for the allowance. MUST match `currency` when present. |
-| `payeeId` | string | OPTIONAL | Payee or merchant identifier authorized to use the token. SHOULD match `methodDetails.payee.id`. |
+| `recipientId` | string | OPTIONAL | Processor-recognized recipient, seller, merchant, account, or profile identifier authorized to use the token. SHOULD match `methodDetails.recipient.id` when that field is present. |
 | `sessionId` | string | OPTIONAL | Session, quote, checkout, or order-attempt identifier authorized to use the token. |
 | `usageCount` | integer | OPTIONAL | Number of permitted redemptions. For `charge`, this MUST be `1` when present. |
 | `expiresAt` | string | OPTIONAL | RFC3339 token allowance expiry. MUST NOT be later than the challenge `expires` auth-param. |
 
 Processors MUST enforce the effective allowance. The effective allowance is the
-most restrictive combination of the challenge amount/currency/payee/expires and
-the explicit `allowance` object.
+most restrictive combination of the challenge amount/currency/expires,
+processor profile, recipient scope when supplied, and the explicit `allowance`
+object.
 
 ## Method Details
 
@@ -421,7 +421,7 @@ The `methodDetails` object has the following structure:
 | --- | --- | --- | --- |
 | `processor` | object | OPTIONAL | Single offered processor identity and discovery information. This is shorthand for simple one-processor deployments and is REQUIRED when `processors` is absent. |
 | `processors` | array[object] | OPTIONAL | Processor options the client enabler may choose from. |
-| `payee` | object | REQUIRED | Payee identity to which the SPT must be scoped. |
+| `recipient` | object | OPTIONAL | Processor-recognized recipient, seller, merchant, account, or profile scope to which the SPT should be bound when not fully implied by the selected processor profile. |
 | `tokenBinding` | object | OPTIONAL | Fields the client enabler SHOULD request the processor to bind into token scope. |
 | `assurance` | object | OPTIONAL | Payer-authentication and risk requirements. |
 | `exemptionContext` | object | OPTIONAL | Non-sensitive merchant-supplied exemption or product context that the processor may need when deciding whether step-up authentication is required. |
@@ -450,23 +450,38 @@ When `processors` is present, each entry uses the `processor` object schema. A
 client enabler that selects a processor from `processors` MUST return that
 processor's `id` in `payload.processorId`.
 
-## `payee` Object
+## `recipient` Object
+
+The `recipient` object is optional processor-recognized recipient scope. It is
+not a general merchant-authored settlement instruction and is not intended to
+expose private payout routing.
+
+Servers SHOULD populate this object only when the server enabler has a stable
+processor-recognized identifier that should be challenge-bound, such as a
+seller profile, merchant account, platform sub-merchant, network profile, or
+recipient profile. When the selected processor profile already implies the
+recipient or merchant account context, servers MAY omit `recipient`.
 
 | Field | Type | Required | Description |
 | --- | --- | --- | --- |
-| `id` | string | REQUIRED | Processor-recognized payee, merchant, seller, platform, or recipient identifier. |
-| `displayName` | string | OPTIONAL | Human-readable payee name for payer display. |
-| `origin` | string | OPTIONAL | Payee-controlled HTTPS origin, if different from the resource realm. |
+| `id` | string | REQUIRED | Processor-recognized recipient, merchant, seller, platform, account, or profile identifier. |
+| `displayName` | string | OPTIONAL | Human-readable recipient name for payer display. |
+| `origin` | string | OPTIONAL | Recipient-controlled HTTPS origin, if different from the resource realm. |
 | `country` | string | OPTIONAL | ISO 3166 country code when needed for processor rules. |
 | `category` | string | OPTIONAL | Merchant category or business category when needed for payer display or processor risk. |
 
-The payee identifier MUST be included in token scope. A server MUST NOT redeem
-an SPT for a payee other than the payee in the challenge unless the processor
-token itself authorizes the alternate payee and the server-side settlement
-policy permits it.
+When `recipient` is present, the recipient identifier MUST be included in token
+scope. A server MUST NOT redeem an SPT for a recipient other than the recipient
+in the challenge unless the processor token itself authorizes the alternate
+recipient and the server-side settlement policy permits it.
+
+When `recipient` is absent, the selected processor profile and server-side
+settlement policy MUST determine recipient or merchant account context. The
+server MUST still verify that the processor outcome is consistent with trusted
+server-side configuration before granting access.
 
 The processor profile determines which underlying payment instruments and
-authentication flows are available for the payee. Servers SHOULD NOT enumerate
+authentication flows are available for the recipient. Servers SHOULD NOT enumerate
 instrument routes in the generic SPT challenge unless a future extension
 profile explicitly requires that disclosure.
 
@@ -490,7 +505,7 @@ Initial binding dimension values:
 * `request`
 * `amount`
 * `currency`
-* `payee`
+* `recipient`
 * `expires`
 * `digest`
 * `resource-origin`
@@ -501,12 +516,14 @@ Clients and processors SHOULD support at least:
 * `challenge-id`
 * `amount`
 * `currency`
-* `payee`
+* `recipient`
 * `expires`
 
-Servers SHOULD require binding to `challenge-id` and `payee` unless the
-processor's token format already provides an equivalent anti-replay and
-recipient-binding mechanism.
+Servers SHOULD require binding to `challenge-id` and to `recipient` when
+`recipient` is present unless the processor's token format already provides an
+equivalent anti-replay and recipient-binding mechanism. When `recipient` is
+omitted, processors MUST bind the SPT to the selected processor profile's
+recipient or merchant account context.
 
 ## `assurance` Object
 
@@ -520,7 +537,9 @@ requirements.
 | `authenticationContext` | array[string] | OPTIONAL | Requested authentication signals. |
 
 This field is advisory to the client enabler and processor. Processors MAY
-apply stronger controls than requested.
+apply stronger controls than requested. Processors that do not support an
+assurance field MAY ignore it, decline issuance, or return a processor-specific
+unsupported-capability outcome.
 
 ## `exemptionContext` Object
 
@@ -576,6 +595,10 @@ The client enabler and processor are responsible for performing any required
 step-up flow and for binding the result into the issued SPT or processor-side
 token record. The server does not orchestrate 3DS or SCA directly through the
 generic SPT credential.
+
+Not all SPT processors expose or support every assurance feature. This profile
+defines portable optional hints and evidence fields; processor-specific SPT
+profiles determine whether a given hint is accepted, ignored, or rejected.
 
 The server does not normally know whether step-up is required when it returns
 the 402 challenge. It SHOULD NOT attempt to compute that decision from merchant
@@ -655,7 +678,7 @@ in plaintext. Servers SHOULD store only a keyed hash or processor reference
 after redemption.
 
 The token value is opaque to the server. The server MUST NOT parse it to derive
-amount, currency, payee, payer, or instrument information unless the processor
+amount, currency, recipient, payer, or instrument information unless the processor
 explicitly documents a signed, authenticated token format and the server
 validates it correctly.
 
@@ -668,7 +691,7 @@ At minimum, the processor MUST associate the SPT with:
 
 * amount limit;
 * currency;
-* payee identifier or payee account;
+* recipient identifier or recipient account;
 * allowance reason and usage count;
 * checkout/session/resource identifier, when provided;
 * expiration time;
@@ -705,7 +728,7 @@ for servers to distinguish:
 * invalid token;
 * expired token;
 * already-used token;
-* payee mismatch;
+* recipient mismatch;
 * amount or currency mismatch;
 * additional payer authentication required;
 * processor risk or compliance decline;
@@ -725,8 +748,8 @@ Servers MUST perform verification in this order:
 4. Verify the challenge is bound to the expected realm, method, intent,
    request, digest, and opaque values.
 5. Decode the original `request` object using base64url and JCS rules.
-6. Verify the request amount, currency, payee, processor, and resource context
-   against server-side order state.
+6. Verify the request amount, currency, recipient scope when supplied,
+   processor, and resource context against server-side order state.
 7. Extract the SPT payload.
 8. Verify `processorId` is supported for the challenge.
 9. Verify any explicit `allowance` constraints are compatible with the order,
@@ -735,7 +758,8 @@ Servers MUST perform verification in this order:
    settlement.
 11. Redeem or validate the SPT with the processor.
 12. Verify the processor response confirms the token scope covers the challenge
-    amount, currency, payee, and other required binding dimensions.
+    amount, currency, recipient or merchant account context, and other required
+    binding dimensions.
 13. Mark the challenge as consumed only after successful settlement, or record
     a pending idempotent attempt if the processor outcome is ambiguous.
 
@@ -762,7 +786,7 @@ For this profile, the decoded `request` SHOULD additionally bind:
 * amount;
 * currency;
 * processor identifier;
-* payee identifier;
+* recipient identifier, when supplied;
 * external identifier;
 * session identifier;
 * allowance constraints, when present;
@@ -784,16 +808,21 @@ The client enabler MUST display or otherwise evaluate the amount and currency
 before obtaining an SPT, unless a delegated policy explicitly authorizes
 payment without real-time payer interaction.
 
-## Payee Verification
+## Recipient Verification
 
-Servers MUST verify the SPT is scoped to the intended payee or to a payee
-authorized by trusted settlement policy.
+When the challenge includes recipient scope, servers MUST verify the SPT is
+scoped to the intended recipient or to a recipient authorized by trusted
+settlement policy.
 
-Processors MUST reject redemption when the payee or processor account context
-does not match token scope.
+When the challenge does not include recipient scope, servers MUST verify the
+processor outcome against trusted processor profile, merchant account, and
+settlement policy configuration.
 
-Client enablers SHOULD display the payee name and resource origin to the payer
-when payer interaction occurs.
+Processors MUST reject redemption when the recipient, merchant account, or
+processor account context does not match token scope.
+
+Client enablers SHOULD display the recipient name when available and resource
+origin to the payer when payer interaction occurs.
 
 ## Replay Protection
 
@@ -835,7 +864,7 @@ The server enabler sends the processor:
 * SPT;
 * amount;
 * currency;
-* payee or account context;
+* recipient or account context;
 * idempotency key;
 * server-side settlement policy;
 * challenge identifier or binding evidence;
@@ -916,7 +945,7 @@ The decoded receipt JSON contains:
 | `amount` | string | RECOMMENDED | Settled amount in base units. |
 | `currency` | string | RECOMMENDED | Settlement currency. |
 | `externalId` | string | OPTIONAL | Server external identifier from the challenge. |
-| `payeeId` | string | OPTIONAL | Payee identifier, if safe to expose. |
+| `recipientId` | string | OPTIONAL | Recipient identifier, if safe to expose. |
 
 Servers MUST NOT include a `Payment-Receipt` header on error responses.
 
@@ -1009,7 +1038,7 @@ Server-side settlement policy MAY include:
 
 * merchant account context;
 * platform account context;
-* payee account;
+* recipient account;
 * platform fee;
 * split amount;
 * delayed capture setting;
@@ -1034,7 +1063,7 @@ inside an explicit trust boundary authorized to control that policy.
 
 If a settlement policy value must be visible to the payer to support informed
 authorization, the value SHOULD be included in the challenge and challenge-bound.
-Examples include payee display name, total amount, currency, and meaningful
+Examples include recipient display name, total amount, currency, and meaningful
 description. Examples that usually should remain server-side include platform
 fee amount, internal split routing, payout grouping, and processor account
 headers.
@@ -1059,11 +1088,14 @@ Clients MUST verify amount and currency before issuing an SPT. Servers MUST
 verify processor settlement amount and currency before granting access.
 Processors MUST reject redemption outside token scope.
 
-## Payee Substitution
+## Recipient Substitution
 
-The payee identifier and payee display context are security-sensitive. Client
-enablers SHOULD show the payee. Processors MUST bind payee scope into the SPT.
-Servers MUST reject unexpected payee outcomes.
+The recipient identifier and recipient display context are security-sensitive
+when provided. Client enablers SHOULD show the recipient when available.
+Processors MUST bind recipient scope into the SPT when recipient scope is
+provided, and MUST otherwise bind the SPT to the selected processor profile's
+merchant account context. Servers MUST reject unexpected recipient or merchant
+account outcomes.
 
 ## Challenge Confusion
 
@@ -1096,7 +1128,7 @@ enablers should apply payer policy and trust controls before issuing tokens.
 An agent may be allowed to create SPTs under delegated payer policy. Client
 enablers and processors SHOULD distinguish real-time payer-present approval from
 delegated policy approval. Challenges SHOULD provide enough context for policy
-engines to evaluate spending limits, payee allowlists, and purpose.
+engines to evaluate spending limits, recipient allowlists, and purpose.
 
 ## Declines and Information Leakage
 
@@ -1169,7 +1201,8 @@ be protected accordingly.
 A conforming client enabler MUST:
 
 * parse Payment challenges using the Payment HTTP Authentication Scheme;
-* validate `method`, `intent`, `amount`, `currency`, payee, and expiry;
+* validate `method`, `intent`, `amount`, `currency`, recipient scope when
+  supplied, and expiry;
 * reject unsupported processors;
 * select only a processor offered by the challenge;
 * obtain an SPT from a processor only after payer approval or delegated payer
@@ -1180,13 +1213,13 @@ A conforming client enabler MUST:
 
 A conforming client enabler SHOULD:
 
-* display payee, amount, currency, and resource origin when payer interaction is
+* display recipient, amount, currency, and resource origin when payer interaction is
   present;
 * support processor selection when a challenge offers multiple processors;
 * request challenge binding dimensions from the processor;
 * pass non-sensitive risk signals to processors when requested and authorized;
 * support processor discovery;
-* support delegated payer policy with explicit spending and payee constraints.
+* support delegated payer policy with explicit spending and recipient constraints.
 
 ## Server Enabler
 
@@ -1206,7 +1239,7 @@ A conforming server enabler MUST:
 A conforming server enabler SHOULD:
 
 * support processor-specific adapters behind the generic profile;
-* maintain an allowlist of processors and payee mappings;
+* maintain an allowlist of processors and recipient mappings;
 * store keyed hashes of SPTs for replay detection;
 * expose stable problem details for common failure modes.
 
@@ -1215,9 +1248,10 @@ A conforming server enabler SHOULD:
 A conforming processor MUST:
 
 * issue opaque single-use SPTs;
-* scope SPTs to amount, currency, payee, expiry, and payer authorization;
+* scope SPTs to amount, currency, expiry, payer authorization, and recipient or
+  merchant account context;
 * enforce allowance constraints including maximum amount, usage count, and
-  payee/session scope when supplied;
+  recipient/session scope when supplied;
 * reject replay;
 * reject scope mismatch;
 * provide a redemption operation that consumes an SPT atomically;
@@ -1292,7 +1326,7 @@ Decoded `request`:
     "reason": "one-time",
     "maxAmount": "5000",
     "currency": "usd",
-    "payeeId": "payee_9k82h",
+    "recipientId": "recipient_9k82h",
     "sessionId": "session_abc123",
     "usageCount": 1,
     "expiresAt": "2026-06-19T19:30:00Z"
@@ -1313,8 +1347,8 @@ Decoded `request`:
         "environment": "production"
       }
     ],
-    "payee": {
-      "id": "payee_9k82h",
+    "recipient": {
+      "id": "recipient_9k82h",
       "displayName": "Example API, Inc.",
       "origin": "https://api.example.com",
       "country": "US",
@@ -1325,7 +1359,7 @@ Decoded `request`:
         "challenge-id",
         "amount",
         "currency",
-        "payee",
+        "recipient",
         "expires"
       ],
       "recommended": ["realm", "request", "resource-origin"]
@@ -1409,7 +1443,7 @@ Decoded receipt:
   "amount": "5000",
   "currency": "usd",
   "externalId": "order_12345",
-  "payeeId": "payee_9k82h"
+  "recipientId": "recipient_9k82h"
 }
 ~~~
 
@@ -1426,15 +1460,15 @@ Content-Type: application/json
 {
   "amount": "5000",
   "currency": "usd",
-  "payee": {
-    "id": "payee_9k82h",
+  "recipient": {
+    "id": "recipient_9k82h",
     "displayName": "Example API, Inc."
   },
   "allowance": {
     "reason": "one-time",
     "maxAmount": "5000",
     "currency": "usd",
-    "payeeId": "payee_9k82h",
+    "recipientId": "recipient_9k82h",
     "sessionId": "session_abc123",
     "usageCount": 1,
     "expiresAt": "2026-06-19T19:30:00Z"
@@ -1466,7 +1500,7 @@ Response:
   "scope": {
     "amount": "5000",
     "currency": "usd",
-    "payeeId": "payee_9k82h",
+    "recipientId": "recipient_9k82h",
     "challengeId": "ch_7Jr8nVwS2mQ",
     "sessionId": "session_abc123",
     "usageCount": 1
@@ -1485,7 +1519,7 @@ Content-Type: application/json
   "sharedPaymentToken": "tok_shared_test_8xY2mN4qP",
   "amount": "5000",
   "currency": "usd",
-  "payeeId": "payee_9k82h",
+  "recipientId": "recipient_9k82h",
   "externalId": "order_12345",
   "sessionId": "session_abc123",
   "challengeId": "ch_7Jr8nVwS2mQ",
@@ -1504,7 +1538,7 @@ Response:
   "reference": "settlement_6N7pQa2",
   "amount": "5000",
   "currency": "usd",
-  "payeeId": "payee_9k82h",
+  "recipientId": "recipient_9k82h",
   "createdAt": "2026-06-19T19:28:11Z"
 }
 ~~~
@@ -1513,7 +1547,7 @@ Response:
 
 A processor can participate in this profile by implementing:
 
-* SPT issuance scoped to amount, currency, payee, expiry, and payer approval.
+* SPT issuance scoped to amount, currency, recipient, expiry, and payer approval.
 * SPT redemption by authorized server-side merchants or platforms.
 * Single-use token enforcement.
 * Idempotent redemption.
@@ -1521,7 +1555,7 @@ A processor can participate in this profile by implementing:
 * Optional discovery document.
 * Error mapping to generic problem types.
 * Safe receipt reference generation.
-* Documentation for payee identifiers.
+* Documentation for recipient identifiers.
 * Documentation for platform and marketplace settlement policy.
 * Sandbox test tokens and conformance fixtures.
 
@@ -1532,7 +1566,7 @@ A processor can participate in this profile by implementing:
 2. Should processor discovery be mandatory for clients, or is server-provided
    processor metadata enough for v1?
 3. Should token binding require the entire encoded `request` value, or are
-   amount, currency, payee, challenge ID, and expiry enough for minimum
+   amount, currency, recipient, challenge ID, and expiry enough for minimum
    interoperability?
 4. Should receipts include authorization-vs-capture status, or should the
    `charge` intent only expose `success` once server policy accepts the outcome?

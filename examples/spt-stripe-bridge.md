@@ -51,7 +51,7 @@ Decoded `request`:
     "reason": "one-time",
     "maxAmount": "5000",
     "currency": "usd",
-    "payeeId": "profile_merchant_123",
+    "recipientId": "profile_merchant_123",
     "sessionId": "checkout_abc123",
     "usageCount": 1,
     "expiresAt": "2026-06-19T19:30:00Z"
@@ -65,7 +65,7 @@ Decoded `request`:
         "environment": "production"
       }
     ],
-    "payee": {
+    "recipient": {
       "id": "profile_merchant_123",
       "displayName": "Example Merchant",
       "origin": "https://api.merchant.example",
@@ -77,15 +77,10 @@ Decoded `request`:
         "challenge-id",
         "amount",
         "currency",
-        "payee",
+        "recipient",
         "expires"
       ],
       "recommended": ["realm", "request", "resource-origin"]
-    },
-    "assurance": {
-      "payerInteraction": "step-up-if-required",
-      "delegation": "payer-policy",
-      "authenticationContext": ["3ds", "sca"]
     },
     "exemptionContext": {
       "requestedExemption": "transaction-risk-analysis",
@@ -104,6 +99,8 @@ Decoded `request`:
 
 The client enabler maps the generic allowance to Stripe SPT creation.
 The exact Stripe API shape may change; this is intentionally illustrative.
+The generic `recipient.id` maps to Stripe's business/network profile identifier
+used in `seller_details.networkId`.
 The client enabler and Stripe use `exemptionContext` as advisory merchant input
 alongside processor-side payer, region, merchant configuration, and risk state
 to determine whether 3DS/SCA is required before issuing the SPT.
@@ -147,19 +144,10 @@ opaque `sharedPaymentToken`.
     "processorId": "stripe",
     "tokenType": "shared-payment-token",
     "allowanceReference": "spt_1N4Zv32eZvKYlo2CPhVPkJlW",
-    "clientReference": "client_attempt_456",
-    "assuranceEvidence": {
-      "intervention": "3ds",
-      "result": "completed",
-      "processorReference": "authn_123"
-    }
+    "clientReference": "client_attempt_456"
   }
 }
 ~~~
-
-The `assuranceEvidence` object is intentionally non-sensitive. It tells the
-server that the processor/client-enabler path completed the required step-up,
-but it does not expose raw 3DS authentication values or payer secrets.
 
 ## Server Enabler: Redeem Through Stripe Adapter
 
@@ -169,7 +157,7 @@ that does it call the Stripe adapter.
 ~~~ javascript
 const settlementPolicy = getTrustedSettlementPolicy({
   externalId: "order_12345",
-  payeeId: "profile_merchant_123"
+  recipientId: "profile_merchant_123"
 });
 
 const paymentIntent = await stripe.paymentIntents.create(
@@ -212,7 +200,7 @@ Decoded `Payment-Receipt`:
   "amount": "5000",
   "currency": "usd",
   "externalId": "order_12345",
-  "payeeId": "profile_merchant_123"
+  "recipientId": "profile_merchant_123"
 }
 ~~~
 
