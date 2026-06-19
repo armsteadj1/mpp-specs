@@ -412,7 +412,7 @@ The `methodDetails` object has the following structure:
 | `acceptedInstrumentTypes` | array[string] | OPTIONAL | Instrument classes the server can accept through this processor. |
 | `tokenBinding` | object | OPTIONAL | Fields the client enabler SHOULD request the processor to bind into token scope. |
 | `assurance` | object | OPTIONAL | Payer-authentication and risk requirements. |
-| `transactionContext` | object | OPTIONAL | Non-sensitive transaction context used for authentication, risk, and exemption decisions. |
+| `exemptionContext` | object | OPTIONAL | Non-sensitive merchant-supplied exemption or product context that the processor may need when deciding whether step-up authentication is required. |
 | `riskSignalRequirements` | object | OPTIONAL | Risk signal categories requested for token issuance. |
 | `settlementCapabilities` | array[string] | OPTIONAL | High-level settlement capabilities the server may use. Informational unless challenge-bound. |
 | `processorOptions` | object | OPTIONAL | Processor-specific extension fields. |
@@ -556,31 +556,43 @@ requirements.
 This field is advisory to the client enabler and processor. Processors MAY
 apply stronger controls than requested.
 
-## `transactionContext` Object
+## `exemptionContext` Object
 
-The `transactionContext` object provides non-sensitive context that can affect
-authentication, risk, and exemption decisions during SPT issuance.
+The `exemptionContext` object provides narrow, non-sensitive merchant-supplied
+context for exemption evaluation during SPT issuance.
+
+Most step-up authentication decisions belong to the processor and client
+enabler. The server usually does not know whether 3-D Secure, Strong Customer
+Authentication, biometric confirmation, or another intervention is required for
+the selected payer, instrument, jurisdiction, processor policy, and risk state.
+
+Servers SHOULD include `exemptionContext` only when the server has merchant,
+product, order, or regulatory facts that the processor cannot reliably infer
+from its own merchant configuration, transaction history, payer state, and
+instrument state.
 
 | Field | Type | Required | Description |
 | --- | --- | --- | --- |
-| `commerceType` | string | OPTIONAL | `one-time`, `recurring-initial`, `recurring-subsequent`, `merchant-initiated`, `unscheduled`, or a registered extension value. |
-| `payerPresence` | string | OPTIONAL | `payer-present`, `payer-not-present`, or `delegated-agent`. |
-| `deliveryType` | string | OPTIONAL | `digital`, `physical`, `service`, or a registered extension value. |
-| `challengePreference` | string | OPTIONAL | `no-preference`, `challenge-requested`, or `challenge-required`. |
-| `exemptionPreference` | string | OPTIONAL | Requested exemption treatment, such as `none`, `low-value`, `transaction-risk-analysis`, `trusted-beneficiary`, or `secure-corporate`. |
-| `merchantCountry` | string | OPTIONAL | ISO 3166 country code for the merchant or payee. |
-| `payerCountry` | string | OPTIONAL | ISO 3166 country code for the payer, if known without exposing sensitive data. |
-| `metadata` | object | OPTIONAL | Additional non-sensitive context for processor-specific policy. |
+| `requestedExemption` | string | OPTIONAL | Exemption treatment requested by the server. Initial values: `none`, `low-value`, `transaction-risk-analysis`, `trusted-beneficiary`, `secure-corporate`, `recurring`, `merchant-initiated`, or a registered extension value. |
+| `reason` | string | OPTIONAL | Non-sensitive reason the exemption is requested, such as `merchant-configured`, `product-eligible`, `regulatory-exclusion`, `recurring-agreement`, or a registered extension value. |
+| `productCategory` | string | OPTIONAL | Broad product or service category when category affects exemption eligibility or processor policy. MUST NOT contain SKU-level or sensitive product data. |
+| `deliveryType` | string | OPTIONAL | `digital`, `physical`, `service`, or a registered extension value when fulfillment type affects exemption eligibility or processor policy. |
+| `recurringAgreementId` | string | OPTIONAL | Server-side reference to a prior recurring, subscription, or merchant-initiated agreement when relevant to exemption evaluation. MUST be opaque and scoped to the merchant. |
+| `metadata` | object | OPTIONAL | Additional non-sensitive context for processor-specific exemption policy. |
 
-Servers SHOULD include `transactionContext` when the server knows facts that
-can affect whether step-up authentication is required. Examples include whether
-the payment is a one-time customer-initiated transaction, the first transaction
-in a recurring relationship, a later merchant-initiated transaction, or a
-delegated-agent purchase.
+The processor MAY ignore, decline, or override any requested exemption.
+Processors remain responsible for deciding whether the selected payment route
+requires step-up authentication.
+
+The `requestedExemption` field is not proof that an exemption applies. It is an
+input to processor policy. When a processor accepts an exemption, the exemption
+decision and any supporting evidence SHOULD be represented in processor-side
+records or in non-sensitive credential evidence defined by this specification or
+by a processor-specific extension.
 
 Servers MUST NOT include raw authentication data, payment instrument details,
 passwords, one-time passcodes, biometric data, or unnecessary payer personal
-data in `transactionContext`.
+data in `exemptionContext`.
 
 ### Step-Up Authentication
 
@@ -592,7 +604,7 @@ The server expresses step-up requirements or preferences through:
 
 * `methodDetails.assurance.payerInteraction`;
 * `methodDetails.assurance.authenticationContext`;
-* `methodDetails.transactionContext`;
+* `methodDetails.exemptionContext`;
 * `methodDetails.paymentHandlers[].requiredInterventions`.
 
 The client enabler and processor are responsible for performing any required
@@ -600,11 +612,15 @@ step-up flow and for binding the result into the issued SPT or processor-side
 token record. The server does not orchestrate 3DS or SCA directly through the
 generic SPT credential.
 
-The server does not always know whether step-up is required when it returns the
-402 challenge. It SHOULD provide the non-sensitive facts it knows, and the
-processor SHOULD make the final decision using challenge context, payer
-context, selected instrument, regional rules, exemptions, fraud/risk signals,
-and processor policy.
+The server does not normally know whether step-up is required when it returns
+the 402 challenge. It SHOULD NOT attempt to compute that decision from merchant
+application state. Instead, it MAY provide `exemptionContext` when it is
+requesting an exemption or when product, order, or regulatory facts known only
+to the merchant can affect exemption eligibility.
+
+The processor SHOULD make the final decision using processor-side merchant
+configuration, challenge context, payer context, selected instrument, regional
+rules, exemption eligibility, fraud/risk signals, and processor policy.
 
 If step-up is required and not yet complete, the processor SHOULD refuse to
 issue an SPT. If the server attempts redemption and the processor determines
