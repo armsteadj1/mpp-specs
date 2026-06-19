@@ -30,9 +30,8 @@ draft and which parts are generic additions for other processors.
 | `methodDetails.processors[].profile` | No direct Stripe field | Generic addition for processor-declared SPT capability/profile selection. |
 | `methodDetails.recipient.id` | `methodDetails.networkId` / `seller_details.networkId` | Direct conceptual mapping, but generic SPT makes it optional because some processor profiles may imply merchant/account scope. |
 | `methodDetails.recipient.displayName` | No direct Stripe field | Generic optional display/safety context. |
-| `methodDetails.tokenBinding` | No direct Stripe field | Generic addition to make anti-replay and challenge binding explicit across processors. |
 | `payload.sharedPaymentToken` | `payload.spt` | Direct mapping with a processor-neutral name. |
-| `payload.processorId` | Implied by `method="stripe"` in Stripe draft | Generic addition so the server knows which processor adapter must redeem the opaque SPT. |
+| `payload.processor` | Implied by `method="stripe"` in Stripe draft | Generic addition so the server knows which processor adapter must redeem the opaque SPT. |
 | `payload.tokenType` | No direct Stripe field | Generic optional discriminator. Defaults to `shared-payment-token`. |
 | `payload.allowanceReference` | Stripe SPT ID | Generic optional reference to the allowance/token issuance result. |
 | `payload.clientReference` | `payload.externalId` | Direct conceptual mapping, renamed to avoid collision with server-side `externalId`. |
@@ -111,16 +110,6 @@ Decoded `request`:
       "origin": "https://api.merchant.example",
       "country": "US",
       "category": "digital-services"
-    },
-    "tokenBinding": {
-      "required": [
-        "challenge-id",
-        "amount",
-        "currency",
-        "recipient",
-        "expires"
-      ],
-      "recommended": ["realm", "request", "resource-origin"]
     }
   }
 }
@@ -172,7 +161,7 @@ opaque `sharedPaymentToken`.
   },
   "payload": {
     "sharedPaymentToken": "spt_1N4Zv32eZvKYlo2CPhVPkJlW",
-    "processorId": "stripe",
+    "processor": "stripe",
     "tokenType": "shared-payment-token",
     "allowanceReference": "spt_1N4Zv32eZvKYlo2CPhVPkJlW",
     "clientReference": "client_attempt_456"
@@ -227,7 +216,7 @@ Decoded `Payment-Receipt`:
   "status": "success",
   "timestamp": "2026-06-19T19:28:11Z",
   "reference": "pi_3N4Zv32eZvKYlo2C0abc1234",
-  "processorId": "stripe",
+  "processor": "stripe",
   "amount": "5000",
   "currency": "usd",
   "externalId": "order_12345",

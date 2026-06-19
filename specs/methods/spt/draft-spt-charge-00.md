@@ -352,7 +352,7 @@ and is still valid for the order or resource state.
 
 The SPT returned in the credential is always issued by exactly one selected
 processor. The credential payload MUST identify that processor with
-`payload.processorId`.
+`payload.processor`.
 
 This keeps the generic SPT profile extensible for cards, wallets, bank
 accounts, network tokens, processor tokens, and future payment instruments
@@ -416,8 +416,6 @@ The `methodDetails` object has the following structure:
 | `processor` | object | OPTIONAL | Single offered processor identity and discovery information. This is shorthand for simple one-processor deployments and is REQUIRED when `processors` is absent. |
 | `processors` | array[object] | OPTIONAL | Processor options the client enabler may choose from. |
 | `recipient` | object | OPTIONAL | Processor-recognized recipient, seller, merchant, account, or profile scope to which the SPT should be bound when not fully implied by the selected processor profile. |
-| `tokenBinding` | object | OPTIONAL | Fields the client enabler SHOULD request the processor to bind into token scope. |
-| `settlementCapabilities` | array[string] | OPTIONAL | High-level settlement capabilities the server may use. Informational unless challenge-bound. |
 | `processorOptions` | object | OPTIONAL | Processor-specific extension fields. |
 | `metadata` | object | OPTIONAL | Non-sensitive key-value metadata for client display or reconciliation hints. |
 
@@ -439,7 +437,7 @@ environments.
 
 When `processors` is present, each entry uses the `processor` object schema. A
 client enabler that selects a processor from `processors` MUST return that
-processor's `id` in `payload.processorId`.
+processor's `id` in `payload.processor`.
 
 ## `recipient` Object
 
@@ -476,46 +474,6 @@ authentication flows are available for the recipient. Servers SHOULD NOT enumera
 instrument routes in the generic SPT challenge unless a future extension
 profile explicitly requires that disclosure.
 
-## `tokenBinding` Object
-
-The `tokenBinding` object tells the client enabler which challenge properties
-SHOULD be bound into the SPT.
-
-| Field | Type | Required | Description |
-| --- | --- | --- | --- |
-| `required` | array[string] | OPTIONAL | Required binding dimensions. |
-| `recommended` | array[string] | OPTIONAL | Recommended binding dimensions. |
-| `nonce` | string | OPTIONAL | Server-generated nonce to include in token scope. |
-
-Initial binding dimension values:
-
-* `challenge-id`
-* `realm`
-* `method`
-* `intent`
-* `request`
-* `amount`
-* `currency`
-* `recipient`
-* `expires`
-* `digest`
-* `resource-origin`
-* `payer-present`
-
-Clients and processors SHOULD support at least:
-
-* `challenge-id`
-* `amount`
-* `currency`
-* `recipient`
-* `expires`
-
-Servers SHOULD require binding to `challenge-id` and to `recipient` when
-`recipient` is present unless the processor's token format already provides an
-equivalent anti-replay and recipient-binding mechanism. When `recipient` is
-omitted, processors MUST bind the SPT to the selected processor profile's
-recipient or merchant account context.
-
 ## Processor Policy Boundary
 
 Payer authentication, risk evaluation, exemption handling, and payment-source
@@ -533,21 +491,6 @@ it SHOULD complete that interaction before returning the SPT to the client. If
 the processor cannot issue or redeem the SPT under its authentication or risk
 policy, issuance or redemption fails using processor-specific error handling
 that the server enabler maps to this profile's problem details.
-
-## `settlementCapabilities`
-
-This optional field declares high-level settlement models the server may use:
-
-* `direct`
-* `platform`
-* `split`
-* `facilitated`
-* `escrow`
-* `delayed-capture`
-
-This field MUST NOT encode fee amounts, destination account identifiers, or
-transfer routing unless those values are required for payer authorization and
-are challenge-bound.
 
 ## `processorOptions`
 
@@ -577,7 +520,7 @@ The SPT payload contains:
 | Field | Type | Required | Description |
 | --- | --- | --- | --- |
 | `sharedPaymentToken` | string | REQUIRED | Opaque single-use token issued by the processor. |
-| `processorId` | string | REQUIRED | Processor identifier that issued or redeems the token. |
+| `processor` | string | REQUIRED | Processor identifier that issued or redeems the token. |
 | `tokenType` | string | OPTIONAL | Token type. Defaults to `shared-payment-token`. |
 | `allowanceReference` | string | OPTIONAL | Processor or client reference for the allowance used to issue the token. |
 | `clientReference` | string | OPTIONAL | Client-side reference for debugging or reconciliation. |
@@ -652,15 +595,14 @@ Servers MUST perform verification in this order:
 6. Verify the request amount, currency, recipient scope when supplied,
    processor, and resource context against server-side order state.
 7. Extract the SPT payload.
-8. Verify `processorId` is supported for the challenge.
+8. Verify `processor` is supported for the challenge.
 9. Verify any explicit `allowance` constraints are compatible with the order,
     resource, or session state.
 10. Verify the SPT has not already been consumed by this server for a successful
    settlement.
 11. Redeem or validate the SPT with the processor.
 12. Verify the processor response confirms the token scope covers the challenge
-    amount, currency, recipient or merchant account context, and other required
-    binding dimensions.
+    amount, currency, recipient or merchant account context, and expiry.
 13. Mark the challenge as consumed only after successful settlement, or record
     a pending idempotent attempt if the processor outcome is ambiguous.
 
@@ -691,7 +633,7 @@ For this profile, the decoded `request` SHOULD additionally bind:
 * external identifier;
 * session identifier;
 * allowance constraints, when present;
-* token-binding nonce, when present.
+* server nonce, when present.
 
 Stateful challenge storage and stateless authenticated challenge identifiers are
 both allowed.
@@ -842,7 +784,7 @@ The decoded receipt JSON contains:
 | `status` | string | REQUIRED | MUST be `success`. |
 | `timestamp` | string | REQUIRED | RFC3339 timestamp of server acceptance. |
 | `reference` | string | REQUIRED | Server or processor settlement reference safe to expose to the client. |
-| `processorId` | string | REQUIRED | Processor identifier. |
+| `processor` | string | REQUIRED | Processor identifier. |
 | `amount` | string | RECOMMENDED | Settled amount in base units. |
 | `currency` | string | RECOMMENDED | Settlement currency. |
 | `externalId` | string | OPTIONAL | Server external identifier from the challenge. |
@@ -895,7 +837,7 @@ The discovery document SHOULD be JCS-compatible JSON:
 ~~~
 {
   "issuer": "https://processor.example",
-  "processorId": "examplepay",
+  "processor": "examplepay",
   "profiles": ["spt-charge-2026-06"],
   "environments": ["production", "sandbox"],
   "tokenIssuance": {
@@ -907,7 +849,6 @@ The discovery document SHOULD be JCS-compatible JSON:
     "supportsIdempotency": true,
     "supportsIntrospection": true
   },
-  "settlementCapabilities": ["direct", "platform", "split"],
   "jwksUri": "https://processor.example/.well-known/jwks.json"
 }
 ~~~
@@ -1107,7 +1048,6 @@ A conforming client enabler SHOULD:
 * display recipient, amount, currency, and resource origin when payer interaction is
   present;
 * support processor selection when a challenge offers multiple processors;
-* request challenge binding dimensions from the processor;
 * support processor discovery;
 * support delegated payer policy with explicit spending and recipient constraints.
 
@@ -1173,8 +1113,6 @@ This document uses the existing `charge` payment intent.
 
 Future registries may be useful for:
 
-* SPT binding dimension names;
-* SPT settlement capability names;
 * SPT problem type suffixes.
 
 
@@ -1240,17 +1178,6 @@ Decoded `request`:
       "country": "US",
       "category": "digital-services"
     },
-    "tokenBinding": {
-      "required": [
-        "challenge-id",
-        "amount",
-        "currency",
-        "recipient",
-        "expires"
-      ],
-      "recommended": ["realm", "request", "resource-origin"]
-    },
-    "settlementCapabilities": ["direct", "platform"],
     "metadata": {
       "product": "premium-api-monthly"
     }
@@ -1295,7 +1222,7 @@ Decoded credential:
   },
   "payload": {
     "sharedPaymentToken": "tok_shared_test_8xY2mN4qP",
-    "processorId": "examplepay",
+    "processor": "examplepay",
     "tokenType": "shared-payment-token",
     "allowanceReference": "allow_72nP",
     "clientReference": "client_attempt_456"
@@ -1313,7 +1240,7 @@ Decoded receipt:
   "status": "success",
   "timestamp": "2026-06-19T19:28:11Z",
   "reference": "settlement_6N7pQa2",
-  "processorId": "examplepay",
+  "processor": "examplepay",
   "amount": "5000",
   "currency": "usd",
   "externalId": "order_12345",
@@ -1430,14 +1357,9 @@ A processor can participate in this profile by implementing:
    a conformance profile that processor-specific methods implement?
 2. Should processor discovery be mandatory for clients, or is server-provided
    processor metadata enough for v1?
-3. Should token binding require the entire encoded `request` value, or are
-   amount, currency, recipient, challenge ID, and expiry enough for minimum
-   interoperability?
-4. Should receipts include authorization-vs-capture status, or should the
+3. Should receipts include authorization-vs-capture status, or should the
    `charge` intent only expose `success` once server policy accepts the outcome?
-5. Should delegated agent spending policies have a standard challenge field in
+4. Should delegated agent spending policies have a standard challenge field in
    this profile, or belong in a separate payer-agent authorization profile?
-6. Should settlement capabilities be visible in challenges, or left entirely to
-   server-side configuration?
-7. Should processor-specific extensions be declared through a registry,
+5. Should processor-specific extensions be declared through a registry,
    reverse-DNS field names, or both?
