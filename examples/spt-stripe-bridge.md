@@ -32,7 +32,6 @@ draft and which parts are generic additions for other processors.
 | `methodDetails.recipient.id` | `methodDetails.networkId` / `seller_details.networkId` | Direct conceptual mapping, but generic SPT makes it optional because some processor profiles may imply merchant/account scope. |
 | `methodDetails.recipient.displayName` | No direct Stripe field | Generic optional display/safety context. |
 | `methodDetails.tokenBinding` | No direct Stripe field | Generic addition to make anti-replay and challenge binding explicit across processors. |
-| `methodDetails.exemptionContext` | No direct Stripe field | Generic optional hint for processors that accept merchant/product facts for SCA or exemption decisions. Stripe's draft says Stripe.js may prompt for 3DS or biometrics, but it does not define exemption request fields. |
 | `payload.sharedPaymentToken` | `payload.spt` | Direct mapping with a processor-neutral name. |
 | `payload.processorId` | Implied by `method="stripe"` in Stripe draft | Generic addition so the server knows which processor adapter must redeem the opaque SPT. |
 | `payload.tokenType` | No direct Stripe field | Generic optional discriminator. Defaults to `shared-payment-token`. |
@@ -48,8 +47,8 @@ Stripe-specific fields that the generic method intentionally does not expose:
   challenge.
 * PaymentIntent and Connect settlement parameters: derived from trusted
   server-side settlement policy after the generic credential is validated.
-* 3DS/biometric challenge details: handled by Stripe.js and Stripe. The generic
-  credential MUST NOT carry raw authentication values.
+* Payer authentication and risk details: handled by Stripe.js and Stripe. The
+  generic credential MUST NOT carry raw authentication or risk values.
 
 ## Flow
 
@@ -124,15 +123,6 @@ Decoded `request`:
         "expires"
       ],
       "recommended": ["realm", "request", "resource-origin"]
-    },
-    "exemptionContext": {
-      "requestedExemption": "transaction-risk-analysis",
-      "reason": "product-eligible",
-      "productCategory": "digital-services",
-      "deliveryType": "digital",
-      "metadata": {
-        "checkoutProfile": "low-risk-digital-goods"
-      }
     }
   }
 }
@@ -144,9 +134,9 @@ The client enabler maps the generic allowance to Stripe SPT creation.
 The exact Stripe API shape may change; this is intentionally illustrative.
 The generic `recipient.id` maps to Stripe's business/network profile identifier
 used in `seller_details.networkId`.
-The client enabler and Stripe use `exemptionContext` as advisory merchant input
-alongside processor-side payer, region, merchant configuration, and risk state
-to determine whether 3DS/SCA is required before issuing the SPT.
+Stripe decides whether additional authentication or risk checks are required
+before issuing the SPT. The generic challenge does not attempt to require or
+prove those processor-side decisions.
 
 ~~~ javascript
 const sharedPaymentToken = await stripe.sharedPayment.issuedTokens.create({

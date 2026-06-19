@@ -190,14 +190,9 @@ Allowance:
 Processor Profile:
 : A processor-declared SPT capability profile. A processor profile identifies
   the processor behavior, merchant configuration, supported instruments,
-  authentication policy, delegated-payment requirements, and settlement
-  capabilities used behind the opaque SPT. The generic SPT method does not
-  expose those internals as separate payment routes.
-
-Risk Signal:
-: A non-sensitive fraud, abuse, authentication, or device signal supplied by an
-  agent, client enabler, seller, or processor to support token issuance or
-  redemption decisions.
+  delegated-payment requirements, and settlement capabilities used behind the
+  opaque SPT. The generic SPT method does not expose those internals as
+  separate payment routes.
 
 Checkout Session:
 : A commerce session, quote, order attempt, or resource access session whose
@@ -423,9 +418,6 @@ The `methodDetails` object has the following structure:
 | `processors` | array[object] | OPTIONAL | Processor options the client enabler may choose from. |
 | `recipient` | object | OPTIONAL | Processor-recognized recipient, seller, merchant, account, or profile scope to which the SPT should be bound when not fully implied by the selected processor profile. |
 | `tokenBinding` | object | OPTIONAL | Fields the client enabler SHOULD request the processor to bind into token scope. |
-| `assurance` | object | OPTIONAL | Payer-authentication and risk requirements. |
-| `exemptionContext` | object | OPTIONAL | Non-sensitive merchant-supplied exemption or product context that the processor may need when deciding whether step-up authentication is required. |
-| `riskSignalRequirements` | object | OPTIONAL | Risk signal categories requested for token issuance. |
 | `settlementCapabilities` | array[string] | OPTIONAL | High-level settlement capabilities the server may use. Informational unless challenge-bound. |
 | `processorOptions` | object | OPTIONAL | Processor-specific extension fields. |
 | `metadata` | object | OPTIONAL | Non-sensitive key-value metadata for client display or reconciliation hints. |
@@ -468,7 +460,7 @@ recipient or merchant account context, servers MAY omit `recipient`.
 | `displayName` | string | OPTIONAL | Human-readable recipient name for payer display. |
 | `origin` | string | OPTIONAL | Recipient-controlled HTTPS origin, if different from the resource realm. |
 | `country` | string | OPTIONAL | ISO 3166 country code when needed for processor rules. |
-| `category` | string | OPTIONAL | Merchant category or business category when needed for payer display or processor risk. |
+| `category` | string | OPTIONAL | Merchant category or business category when needed for payer display or processor profile matching. |
 
 When `recipient` is present, the recipient identifier MUST be included in token
 scope. A server MUST NOT redeem an SPT for a recipient other than the recipient
@@ -525,102 +517,23 @@ equivalent anti-replay and recipient-binding mechanism. When `recipient` is
 omitted, processors MUST bind the SPT to the selected processor profile's
 recipient or merchant account context.
 
-## `assurance` Object
+## Processor Policy Boundary
 
-The `assurance` object describes payer interaction or authentication
-requirements.
+Payer authentication, risk evaluation, exemption handling, and payment-source
+selection are processor responsibilities. This profile does not define request
+or credential fields that attempt to require, prove, or transmit processor-side
+authentication, risk, or exemption decisions.
 
-| Field | Type | Required | Description |
-| --- | --- | --- | --- |
-| `payerInteraction` | string | OPTIONAL | `none`, `payer-present`, `step-up-if-required`, or `always-step-up`. |
-| `delegation` | string | OPTIONAL | `none`, `payer-policy`, `agent-policy`, or `processor-policy`. |
-| `authenticationContext` | array[string] | OPTIONAL | Requested authentication signals. |
+Servers cannot rely on a client to pass advisory authentication or risk hints
+to the selected processor. Processors MUST make issuance decisions from their
+own policy, merchant configuration, payer context, payment-source context, and
+any processor-specific data obtained through trusted channels.
 
-This field is advisory to the client enabler and processor. Processors MAY
-apply stronger controls than requested. Processors that do not support an
-assurance field MAY ignore it, decline issuance, or return a processor-specific
-unsupported-capability outcome.
-
-## `exemptionContext` Object
-
-The `exemptionContext` object provides narrow, non-sensitive merchant-supplied
-context for exemption evaluation during SPT issuance.
-
-Most step-up authentication decisions belong to the processor and client
-enabler. The server usually does not know whether 3-D Secure, Strong Customer
-Authentication, biometric confirmation, or another intervention is required for
-the selected payer, instrument, jurisdiction, processor policy, and risk state.
-
-Servers SHOULD include `exemptionContext` only when the server has merchant,
-product, order, or regulatory facts that the processor cannot reliably infer
-from its own merchant configuration, transaction history, payer state, and
-instrument state.
-
-| Field | Type | Required | Description |
-| --- | --- | --- | --- |
-| `requestedExemption` | string | OPTIONAL | Exemption treatment requested by the server. Initial values: `none`, `low-value`, `transaction-risk-analysis`, `trusted-beneficiary`, `secure-corporate`, `recurring`, `merchant-initiated`, or a registered extension value. |
-| `reason` | string | OPTIONAL | Non-sensitive reason the exemption is requested, such as `merchant-configured`, `product-eligible`, `regulatory-exclusion`, `recurring-agreement`, or a registered extension value. |
-| `productCategory` | string | OPTIONAL | Broad product or service category when category affects exemption eligibility or processor policy. MUST NOT contain SKU-level or sensitive product data. |
-| `deliveryType` | string | OPTIONAL | `digital`, `physical`, `service`, or a registered extension value when fulfillment type affects exemption eligibility or processor policy. |
-| `recurringAgreementId` | string | OPTIONAL | Server-side reference to a prior recurring, subscription, or merchant-initiated agreement when relevant to exemption evaluation. MUST be opaque and scoped to the merchant. |
-| `metadata` | object | OPTIONAL | Additional non-sensitive context for processor-specific exemption policy. |
-
-The processor MAY ignore, decline, or override any requested exemption.
-Processors remain responsible for deciding whether the selected payment route
-requires step-up authentication.
-
-The `requestedExemption` field is not proof that an exemption applies. It is an
-input to processor policy. When a processor accepts an exemption, the exemption
-decision and any supporting evidence SHOULD be represented in processor-side
-records or in non-sensitive credential evidence defined by this specification or
-by a processor-specific extension.
-
-Servers MUST NOT include raw authentication data, payment instrument details,
-passwords, one-time passcodes, biometric data, or unnecessary payer personal
-data in `exemptionContext`.
-
-### Step-Up Authentication
-
-3-D Secure (3DS), Strong Customer Authentication (SCA), biometric
-confirmation, and similar step-up flows occur during SPT issuance, before the
-client sends the Payment credential to the server.
-
-The server expresses step-up requirements or preferences through:
-
-* `methodDetails.assurance.payerInteraction`;
-* `methodDetails.assurance.authenticationContext`;
-* `methodDetails.exemptionContext`.
-
-The client enabler and processor are responsible for performing any required
-step-up flow and for binding the result into the issued SPT or processor-side
-token record. The server does not orchestrate 3DS or SCA directly through the
-generic SPT credential.
-
-Not all SPT processors expose or support every assurance feature. This profile
-defines portable optional hints and evidence fields; processor-specific SPT
-profiles determine whether a given hint is accepted, ignored, or rejected.
-
-The server does not normally know whether step-up is required when it returns
-the 402 challenge. It SHOULD NOT attempt to compute that decision from merchant
-application state. Instead, it MAY provide `exemptionContext` when it is
-requesting an exemption or when product, order, or regulatory facts known only
-to the merchant can affect exemption eligibility.
-
-The processor SHOULD make the final decision using processor-side merchant
-configuration, challenge context, payer context, available payment paths,
-regional rules, exemption eligibility, fraud/risk signals, and processor
-policy.
-
-If step-up is required and not yet complete, the processor SHOULD refuse to
-issue an SPT. If the server attempts redemption and the processor determines
-that additional payer authentication is required, redemption MUST fail with a
-processor outcome that maps to `payer-authentication-required`.
-
-Credentials MAY include non-sensitive `assuranceEvidence`, such as the
-intervention type or a processor reference. Credentials MUST NOT include raw
-3DS authentication values, cryptograms, biometric data, one-time passwords, or
-other payer authentication secrets unless a processor-specific extension
-explicitly defines safe handling for that data.
+If a processor requires additional payer authentication before issuing an SPT,
+it SHOULD complete that interaction before returning the SPT to the client. If
+the processor cannot issue or redeem the SPT under its authentication or risk
+policy, issuance or redemption fails using processor-specific error handling
+that the server enabler maps to this profile's problem details.
 
 ## `settlementCapabilities`
 
@@ -669,8 +582,6 @@ The SPT payload contains:
 | `tokenType` | string | OPTIONAL | Token type. Defaults to `shared-payment-token`. |
 | `allowanceReference` | string | OPTIONAL | Processor or client reference for the allowance used to issue the token. |
 | `clientReference` | string | OPTIONAL | Client-side reference for debugging or reconciliation. |
-| `assuranceEvidence` | object | OPTIONAL | Non-sensitive evidence that requested payer assurance occurred. |
-| `riskEvidence` | object | OPTIONAL | Non-sensitive summary of risk checks used during token issuance. |
 | `processorPayload` | object | OPTIONAL | Processor-specific extension payload. |
 
 The `sharedPaymentToken` value is a bearer credential. Servers MUST NOT log it
@@ -709,18 +620,10 @@ Processors SHOULD additionally bind:
 * encoded request value;
 * request body digest, when present;
 * server or resource origin;
-* payer authentication result, if any;
-* non-sensitive risk signal summary, if any;
 * payer consent text or consent hash, if any.
 
 Processors MUST reject token issuance if the payer is not authorized to use an
 eligible payment source under the selected processor profile.
-
-Processors SHOULD accept risk signals or risk-signal summaries from trusted
-agents, client enablers, sellers, or fraud systems. Risk signals MUST NOT weaken
-the allowance constraints. Processors MAY use risk signals to decline issuance,
-require step-up authentication, select an eligible payment path, or annotate the
-token for redemption-time review.
 
 Processors SHOULD expose enough token introspection or redemption error detail
 for servers to distinguish:
@@ -730,7 +633,6 @@ for servers to distinguish:
 * already-used token;
 * recipient mismatch;
 * amount or currency mismatch;
-* additional payer authentication required;
 * processor risk or compliance decline;
 * processor unavailable.
 
@@ -894,7 +796,7 @@ Accepted processor outcomes MAY include:
 Accepted outcomes MUST NOT include:
 
 * token created but not redeemed;
-* payer authentication still required;
+* processor authorization still pending;
 * authorization pending with no guarantee;
 * processor risk review pending when server policy requires immediate payment;
 * settlement attempt created but failed.
@@ -969,16 +871,11 @@ Recommended problem type suffixes:
 * `shared-payment-token-already-used`
 * `shared-payment-token-scope-mismatch`
 * `unsupported-processor`
-* `payer-authentication-required`
 * `processor-declined`
 * `processor-unavailable`
 * `settlement-ambiguous`
 * `challenge-expired`
 * `challenge-mismatch`
-
-If the token failed because additional payer authentication is required, the
-server SHOULD return a new challenge. The client enabler MAY use the new
-challenge to obtain a fresh SPT after step-up authentication.
 
 If the processor outcome is ambiguous, the server SHOULD use 202, 409, or 402
 according to the surrounding API semantics only if it can avoid duplicate
@@ -1011,12 +908,7 @@ The discovery document SHOULD be JCS-compatible JSON:
     "supportsIdempotency": true,
     "supportsIntrospection": true
   },
-  "assurance": ["payer-present", "step-up-if-required"],
   "settlementCapabilities": ["direct", "platform", "split"],
-  "riskSignals": {
-    "accepted": ["card-testing", "device", "account-age", "velocity"],
-    "required": []
-  },
   "jwksUri": "https://processor.example/.well-known/jwks.json"
 }
 ~~~
@@ -1123,12 +1015,12 @@ metadata. Servers SHOULD maintain an allowlist of processors and account
 mappings. A malicious server can still advertise a malicious processor; client
 enablers should apply payer policy and trust controls before issuing tokens.
 
-## Payer Authentication and Delegated Agents
+## Payer Approval and Delegated Agents
 
 An agent may be allowed to create SPTs under delegated payer policy. Client
-enablers and processors SHOULD distinguish real-time payer-present approval from
-delegated policy approval. Challenges SHOULD provide enough context for policy
-engines to evaluate spending limits, recipient allowlists, and purpose.
+enablers and processors SHOULD distinguish real-time payer-present approval
+from delegated policy approval. Challenges SHOULD provide enough context for
+policy engines to evaluate spending limits, recipient allowlists, and purpose.
 
 ## Declines and Information Leakage
 
@@ -1217,7 +1109,6 @@ A conforming client enabler SHOULD:
   present;
 * support processor selection when a challenge offers multiple processors;
 * request challenge binding dimensions from the processor;
-* pass non-sensitive risk signals to processors when requested and authorized;
 * support processor discovery;
 * support delegated payer policy with explicit spending and recipient constraints.
 
@@ -1265,7 +1156,6 @@ A conforming processor SHOULD:
 * support request or digest binding;
 * publish processor profile metadata or support equivalent bilateral
   configuration;
-* accept non-sensitive risk-signal summaries from trusted parties;
 * expose discovery metadata;
 * expose introspection or status lookup for ambiguous outcomes;
 * return failure categories that map to this profile's problem types.
@@ -1285,8 +1175,6 @@ This document uses the existing `charge` payment intent.
 Future registries may be useful for:
 
 * SPT binding dimension names;
-* SPT instrument type names;
-* SPT assurance values;
 * SPT settlement capability names;
 * SPT problem type suffixes.
 
@@ -1364,14 +1252,6 @@ Decoded `request`:
       ],
       "recommended": ["realm", "request", "resource-origin"]
     },
-    "riskSignalRequirements": {
-      "accepted": ["device", "velocity", "account-age"],
-      "required": []
-    },
-    "assurance": {
-      "payerInteraction": "step-up-if-required",
-      "delegation": "payer-policy"
-    },
     "settlementCapabilities": ["direct", "platform"],
     "metadata": {
       "product": "premium-api-monthly"
@@ -1391,7 +1271,7 @@ WWW-Authenticate: Payment id="ch_7Jr8nVwS2mQ",
     method="spt",
     intent="charge",
     expires="2026-06-19T19:30:00Z",
-    request="eyJhbW91bnQiOiI1MDAwIiwiY3VycmVuY3kiOiJ1c2QiLCJkZXNjcmlwdGlvbiI6IlByZW1pdW0gQVBJIGFjY2VzcyBmb3IgMSBtb250aCIsImV4dGVybmFsSWQiOiJvcmRlcl8xMjM0NSIsIm1ldGhvZERldGFpbHMiOnsicGF5ZWUiOnsiaWQiOiJwYXllZV85azgyaCIsImRpc3BsYXlOYW1lIjoiRXhhbXBsZSBBUEksIEluYy4ifSwicHJvY2Vzc29yIjp7ImlkIjoiZXhhbXBsZXBheSIsIm9yaWdpbiI6Imh0dHBzOi8vcHJvY2Vzc29yLmV4YW1wbGUifX19"
+    request="<base64url-jcs-json>"
 
 {
   "type": "https://paymentauth.org/problems/payment-required",
@@ -1413,18 +1293,14 @@ Decoded credential:
     "method": "spt",
     "intent": "charge",
     "expires": "2026-06-19T19:30:00Z",
-    "request": "eyJhbW91bnQiOiI1MDAwIiwiY3VycmVuY3kiOiJ1c2QiLCJkZXNjcmlwdGlvbiI6IlByZW1pdW0gQVBJIGFjY2VzcyBmb3IgMSBtb250aCIsImV4dGVybmFsSWQiOiJvcmRlcl8xMjM0NSIsIm1ldGhvZERldGFpbHMiOnsicGF5ZWUiOnsiaWQiOiJwYXllZV85azgyaCIsImRpc3BsYXlOYW1lIjoiRXhhbXBsZSBBUEksIEluYy4ifSwicHJvY2Vzc29yIjp7ImlkIjoiZXhhbXBsZXBheSIsIm9yaWdpbiI6Imh0dHBzOi8vcHJvY2Vzc29yLmV4YW1wbGUifX19"
+    "request": "<base64url-jcs-json>"
   },
   "payload": {
     "sharedPaymentToken": "tok_shared_test_8xY2mN4qP",
     "processorId": "examplepay",
     "tokenType": "shared-payment-token",
     "allowanceReference": "allow_72nP",
-    "clientReference": "client_attempt_456",
-    "riskEvidence": {
-      "signalsProvided": ["device", "velocity"],
-      "decision": "authorized"
-    }
+    "clientReference": "client_attempt_456"
   }
 }
 ~~~
@@ -1480,13 +1356,6 @@ Content-Type: application/json
     "intent": "charge",
     "expires": "2026-06-19T19:30:00Z",
     "requestHash": "sha256:..."
-  },
-  "assurance": {
-    "payerInteraction": "step-up-if-required"
-  },
-  "riskSignals": {
-    "device": "trusted-device",
-    "velocity": "normal"
   }
 }
 ~~~
