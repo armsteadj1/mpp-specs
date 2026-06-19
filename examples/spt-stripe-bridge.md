@@ -80,7 +80,7 @@ Decoded `request`:
         "credentialTypes": ["shared-payment-token"],
         "instrumentTypes": ["card", "wallet"],
         "pciScope": "token-only",
-        "requiredInterventions": ["step-up-if-required"]
+        "requiredInterventions": ["3ds", "sca", "step-up-if-required"]
       }
     ],
     "acceptedInstrumentTypes": ["card", "wallet"],
@@ -96,7 +96,8 @@ Decoded `request`:
     },
     "assurance": {
       "payerInteraction": "step-up-if-required",
-      "delegation": "payer-policy"
+      "delegation": "payer-policy",
+      "authenticationContext": ["3ds", "sca"]
     }
   }
 }
@@ -148,10 +149,19 @@ opaque `sharedPaymentToken`.
     "tokenType": "shared-payment-token",
     "allowanceReference": "spt_1N4Zv32eZvKYlo2CPhVPkJlW",
     "clientReference": "client_attempt_456",
-    "instrumentType": "card"
+    "instrumentType": "card",
+    "assuranceEvidence": {
+      "intervention": "3ds",
+      "result": "completed",
+      "processorReference": "authn_123"
+    }
   }
 }
 ~~~
+
+The `assuranceEvidence` object is intentionally non-sensitive. It tells the
+server that the processor/client-enabler path completed the required step-up,
+but it does not expose raw 3DS authentication values or payer secrets.
 
 ## Server Enabler: Redeem Through Stripe Adapter
 

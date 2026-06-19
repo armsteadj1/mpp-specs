@@ -497,6 +497,12 @@ and include `payload.paymentHandlerId` in the credential. Servers MUST reject a
 credential whose selected handler was not present in the challenge or is no
 longer valid for the server-side order state.
 
+The `requiredInterventions` array is a disclosure and selection hint, not a
+replacement for processor risk decisions. A handler MAY declare that it can
+require `3ds`, `sca`, `biometric`, `address-verification`, or other payer
+interventions. The processor and client enabler determine whether an
+intervention is actually required before issuing the SPT.
+
 ## `tokenBinding` Object
 
 The `tokenBinding` object tells the client enabler which challenge properties
@@ -548,6 +554,34 @@ requirements.
 
 This field is advisory to the client enabler and processor. Processors MAY
 apply stronger controls than requested.
+
+### Step-Up Authentication
+
+3-D Secure (3DS), Strong Customer Authentication (SCA), biometric
+confirmation, and similar step-up flows occur during SPT issuance, before the
+client sends the Payment credential to the server.
+
+The server expresses step-up requirements or preferences through:
+
+* `methodDetails.assurance.payerInteraction`;
+* `methodDetails.assurance.authenticationContext`;
+* `methodDetails.paymentHandlers[].requiredInterventions`.
+
+The client enabler and processor are responsible for performing any required
+step-up flow and for binding the result into the issued SPT or processor-side
+token record. The server does not orchestrate 3DS or SCA directly through the
+generic SPT credential.
+
+If step-up is required and not yet complete, the processor SHOULD refuse to
+issue an SPT. If the server attempts redemption and the processor determines
+that additional payer authentication is required, redemption MUST fail with a
+processor outcome that maps to `payer-authentication-required`.
+
+Credentials MAY include non-sensitive `assuranceEvidence`, such as the
+intervention type or a processor reference. Credentials MUST NOT include raw
+3DS authentication values, cryptograms, biometric data, one-time passwords, or
+other payer authentication secrets unless a processor-specific extension
+explicitly defines safe handling for that data.
 
 ## `settlementCapabilities`
 
