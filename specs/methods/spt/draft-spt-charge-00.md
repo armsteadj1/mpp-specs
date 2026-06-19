@@ -340,10 +340,26 @@ Payment HTTP Authentication can represent the same pattern in two ways:
 2. the server can emit one generic `method="spt"` challenge whose request
    includes `methodDetails.paymentHandlers[]`.
 
+For interoperability, servers that support more than one processor SHOULD use
+one generic `method="spt"` challenge with multiple `paymentHandlers[]` entries.
+This lets the client enabler compare supported processors, instruments, and
+interventions inside one payment method instance.
+
+The singular `methodDetails.processor` field is a shorthand for simple
+deployments where only one processor route is offered. The
+`methodDetails.processors[]` array lists processor identities that handlers can
+reference. The `methodDetails.paymentHandlers[]` array is the authoritative
+list of selectable payment routes when more than one route is offered.
+
 When multiple handlers are present, the client enabler SHOULD select exactly
 one handler and include its identifier in the credential payload. The server
 MUST verify that the selected handler was offered in the original challenge and
 is still valid for the order or resource state.
+
+The SPT returned in the credential is always issued by exactly one selected
+processor. The credential payload MUST identify that processor with
+`payload.processorId` and MUST identify `payload.paymentHandlerId` when the
+challenge offered multiple handlers.
 
 This keeps the generic SPT profile extensible for cards, wallets, bank
 accounts, network tokens, processor tokens, and future payment instruments
@@ -405,8 +421,8 @@ The `methodDetails` object has the following structure:
 
 | Field | Type | Required | Description |
 | --- | --- | --- | --- |
-| `processor` | object | OPTIONAL | Preferred processor identity and discovery information. REQUIRED when `processors` and `paymentHandlers` are absent. |
-| `processors` | array[object] | OPTIONAL | Processor options the client enabler may choose from. |
+| `processor` | object | OPTIONAL | Single offered processor identity and discovery information. This is shorthand for simple one-processor deployments and is REQUIRED when `processors` and `paymentHandlers` are absent. |
+| `processors` | array[object] | OPTIONAL | Processor identities that selectable handlers may reference. |
 | `payee` | object | REQUIRED | Payee identity to which the SPT must be scoped. |
 | `paymentHandlers` | array[object] | OPTIONAL | Negotiated payment handlers, each describing a processor/instrument/tokenization option. |
 | `acceptedInstrumentTypes` | array[string] | OPTIONAL | Instrument classes the server can accept through this processor. |
@@ -434,7 +450,9 @@ If `origin` is present, it MUST use HTTPS. Client enablers MUST reject
 non-HTTPS processor origins except in explicitly configured local development
 environments.
 
-When `processors` is present, each entry uses the `processor` object schema. A
+When `processors` is present, each entry uses the `processor` object schema.
+When `paymentHandlers` is also present, each handler's `processorId` MUST
+reference either an entry in `processors` or the singular `processor.id`. A
 client enabler that selects a processor from `processors` MUST return that
 processor's `id` in `payload.processorId`.
 
