@@ -187,11 +187,12 @@ Allowance:
   commonly includes maximum amount, currency, payee or merchant identifier,
   checkout/session identifier, expiry, reason, and usage count.
 
-Payment Handler:
-: A named payment capability advertised by a seller, server, or processor. A
-  payment handler identifies the credential type, processor, profile version,
-  instrument schemas, delegated-payment requirements, and compliance boundary
-  needed to complete payment.
+Processor Profile:
+: A processor-declared SPT capability profile. A processor profile identifies
+  the processor behavior, merchant configuration, supported instruments,
+  authentication policy, delegated-payment requirements, and settlement
+  capabilities used behind the opaque SPT. The generic SPT method does not
+  expose those internals as separate payment routes.
 
 Risk Signal:
 : A non-sensitive fraud, abuse, authentication, or device signal supplied by an
@@ -210,7 +211,7 @@ Challenge Binding:
 Token Scope:
 : The bounded set of constraints under which an SPT may be redeemed, including
   amount, currency, payee, processor, expiration, challenge identifier, resource
-  origin, request body digest, instrument class, and any additional constraints
+  origin, request body digest, and any additional constraints
   agreed by the processor and client enabler.
 
 # Actor Model
@@ -326,40 +327,37 @@ The SPT charge flow is:
 SPT issuance and SPT redemption MAY be performed by the same processor endpoint
 or by different endpoints within the same processor trust domain.
 
-## Payment Handler Selection
+## Processor Selection
 
-A server can advertise one or more SPT-compatible payment handlers. Each
-handler describes a concrete route for fulfilling the payment challenge,
-including the processor, delegated-payment credential type, accepted
-instrument types, and any payer interventions that may be required.
+A server can advertise one or more SPT-capable processors. Each processor
+entry identifies a processor and, optionally, the processor profile or merchant
+configuration profile to use for this challenge.
 
-Payment HTTP Authentication can represent the same pattern in two ways:
-
-1. the server can emit multiple `WWW-Authenticate: Payment` challenges, one per
-   processor or handler;
-2. the server can emit one generic `method="spt"` challenge whose request
-   includes `methodDetails.paymentHandlers[]`.
+The generic SPT method does not require the server to enumerate card, wallet,
+bank-account, network-token, or other underlying payment routes. An SPT is the
+credential type. The selected processor is responsible for determining which
+underlying instruments, payer authentication methods, risk checks, exemptions,
+and settlement paths are available for the payee and processor profile.
 
 For interoperability, servers that support more than one processor SHOULD use
-one generic `method="spt"` challenge with multiple `paymentHandlers[]` entries.
-This lets the client enabler compare supported processors, instruments, and
-interventions inside one payment method instance.
+one generic `method="spt"` challenge with `methodDetails.processors[]`. This
+lets the client enabler choose among supported SPT processors without creating
+multiple method variants or leaking processor-specific instrument routing into
+the generic challenge.
 
 The singular `methodDetails.processor` field is a shorthand for simple
-deployments where only one processor route is offered. The
-`methodDetails.processors[]` array lists processor identities that handlers can
-reference. The `methodDetails.paymentHandlers[]` array is the authoritative
-list of selectable payment routes when more than one route is offered.
+deployments where only one processor is offered. The
+`methodDetails.processors[]` array is the authoritative list of selectable
+processors when more than one processor is offered.
 
-When multiple handlers are present, the client enabler SHOULD select exactly
-one handler and include its identifier in the credential payload. The server
-MUST verify that the selected handler was offered in the original challenge and
-is still valid for the order or resource state.
+When multiple processors are present, the client enabler SHOULD select exactly
+one processor and include its identifier in the credential payload. The server
+MUST verify that the selected processor was offered in the original challenge
+and is still valid for the order or resource state.
 
 The SPT returned in the credential is always issued by exactly one selected
 processor. The credential payload MUST identify that processor with
-`payload.processorId` and MUST identify `payload.paymentHandlerId` when the
-challenge offered multiple handlers.
+`payload.processorId`.
 
 This keeps the generic SPT profile extensible for cards, wallets, bank
 accounts, network tokens, processor tokens, and future payment instruments
@@ -421,11 +419,9 @@ The `methodDetails` object has the following structure:
 
 | Field | Type | Required | Description |
 | --- | --- | --- | --- |
-| `processor` | object | OPTIONAL | Single offered processor identity and discovery information. This is shorthand for simple one-processor deployments and is REQUIRED when `processors` and `paymentHandlers` are absent. |
-| `processors` | array[object] | OPTIONAL | Processor identities that selectable handlers may reference. |
+| `processor` | object | OPTIONAL | Single offered processor identity and discovery information. This is shorthand for simple one-processor deployments and is REQUIRED when `processors` is absent. |
+| `processors` | array[object] | OPTIONAL | Processor options the client enabler may choose from. |
 | `payee` | object | REQUIRED | Payee identity to which the SPT must be scoped. |
-| `paymentHandlers` | array[object] | OPTIONAL | Negotiated payment handlers, each describing a processor/instrument/tokenization option. |
-| `acceptedInstrumentTypes` | array[string] | OPTIONAL | Instrument classes the server can accept through this processor. |
 | `tokenBinding` | object | OPTIONAL | Fields the client enabler SHOULD request the processor to bind into token scope. |
 | `assurance` | object | OPTIONAL | Payer-authentication and risk requirements. |
 | `exemptionContext` | object | OPTIONAL | Non-sensitive merchant-supplied exemption or product context that the processor may need when deciding whether step-up authentication is required. |
@@ -450,9 +446,7 @@ If `origin` is present, it MUST use HTTPS. Client enablers MUST reject
 non-HTTPS processor origins except in explicitly configured local development
 environments.
 
-When `processors` is present, each entry uses the `processor` object schema.
-When `paymentHandlers` is also present, each handler's `processorId` MUST
-reference either an entry in `processors` or the singular `processor.id`. A
+When `processors` is present, each entry uses the `processor` object schema. A
 client enabler that selects a processor from `processors` MUST return that
 processor's `id` in `payload.processorId`.
 
@@ -471,56 +465,10 @@ an SPT for a payee other than the payee in the challenge unless the processor
 token itself authorizes the alternate payee and the server-side settlement
 policy permits it.
 
-## `acceptedInstrumentTypes`
-
-The `acceptedInstrumentTypes` array describes payment instrument classes the
-server can accept through the named processor.
-
-Initial values:
-
-* `card`
-* `bank-account`
-* `wallet`
-* `stored-balance`
-* `real-time-payment`
-* `network-token`
-* `processor-token`
-
-Processors MAY define additional values using reverse-DNS or URI-like names,
-for example `com.example.instrument`.
-
-Clients SHOULD treat this field as a selection hint. Processors remain
-responsible for determining whether a given payer instrument is eligible.
-
-### `paymentHandlers`
-
-The `paymentHandlers` array describes concrete payment routes available for the
-challenge.
-
-| Field | Type | Required | Description |
-| --- | --- | --- | --- |
-| `id` | string | REQUIRED | Stable handler identifier within this challenge. |
-| `name` | string | OPTIONAL | Human-readable handler name. |
-| `version` | string | OPTIONAL | Handler or profile version. |
-| `specUrl` | string | OPTIONAL | HTTPS URL for the handler specification. |
-| `processorId` | string | REQUIRED | Processor used by this handler. |
-| `usesDelegatedPayment` | boolean | OPTIONAL | Whether the handler obtains an SPT or equivalent delegated token. Defaults to true. |
-| `credentialTypes` | array[string] | OPTIONAL | Credential types accepted by the handler. Initial value: `shared-payment-token`. |
-| `instrumentTypes` | array[string] | OPTIONAL | Instrument classes accepted by the handler. |
-| `pciScope` | string | OPTIONAL | Informational compliance hint such as `token-only`, `processor-hosted`, or `merchant-vault`. |
-| `requiredInterventions` | array[string] | OPTIONAL | User or payer interventions that may be required, such as `3ds`, `biometric`, or `address-verification`. |
-| `processorOptions` | object | OPTIONAL | Handler-specific processor extension fields. |
-
-If `paymentHandlers` is present, the client enabler SHOULD select one handler
-and include `payload.paymentHandlerId` in the credential. Servers MUST reject a
-credential whose selected handler was not present in the challenge or is no
-longer valid for the server-side order state.
-
-The `requiredInterventions` array is a disclosure and selection hint, not a
-replacement for processor risk decisions. A handler MAY declare that it can
-require `3ds`, `sca`, `biometric`, `address-verification`, or other payer
-interventions. The processor and client enabler determine whether an
-intervention is actually required before issuing the SPT.
+The processor profile determines which underlying payment instruments and
+authentication flows are available for the payee. Servers SHOULD NOT enumerate
+instrument routes in the generic SPT challenge unless a future extension
+profile explicitly requires that disclosure.
 
 ## `tokenBinding` Object
 
@@ -622,8 +570,7 @@ The server expresses step-up requirements or preferences through:
 
 * `methodDetails.assurance.payerInteraction`;
 * `methodDetails.assurance.authenticationContext`;
-* `methodDetails.exemptionContext`;
-* `methodDetails.paymentHandlers[].requiredInterventions`.
+* `methodDetails.exemptionContext`.
 
 The client enabler and processor are responsible for performing any required
 step-up flow and for binding the result into the issued SPT or processor-side
@@ -637,8 +584,9 @@ requesting an exemption or when product, order, or regulatory facts known only
 to the merchant can affect exemption eligibility.
 
 The processor SHOULD make the final decision using processor-side merchant
-configuration, challenge context, payer context, selected instrument, regional
-rules, exemption eligibility, fraud/risk signals, and processor policy.
+configuration, challenge context, payer context, available payment paths,
+regional rules, exemption eligibility, fraud/risk signals, and processor
+policy.
 
 If step-up is required and not yet complete, the processor SHOULD refuse to
 issue an SPT. If the server attempts redemption and the processor determines
@@ -695,11 +643,9 @@ The SPT payload contains:
 | --- | --- | --- | --- |
 | `sharedPaymentToken` | string | REQUIRED | Opaque single-use token issued by the processor. |
 | `processorId` | string | REQUIRED | Processor identifier that issued or redeems the token. |
-| `paymentHandlerId` | string | OPTIONAL | Identifier of the selected payment handler from the challenge. REQUIRED when the challenge included multiple handlers. |
 | `tokenType` | string | OPTIONAL | Token type. Defaults to `shared-payment-token`. |
 | `allowanceReference` | string | OPTIONAL | Processor or client reference for the allowance used to issue the token. |
 | `clientReference` | string | OPTIONAL | Client-side reference for debugging or reconciliation. |
-| `instrumentType` | string | OPTIONAL | Instrument class selected by the client enabler. |
 | `assuranceEvidence` | object | OPTIONAL | Non-sensitive evidence that requested payer assurance occurred. |
 | `riskEvidence` | object | OPTIONAL | Non-sensitive summary of risk checks used during token issuance. |
 | `processorPayload` | object | OPTIONAL | Processor-specific extension payload. |
@@ -740,20 +686,18 @@ Processors SHOULD additionally bind:
 * encoded request value;
 * request body digest, when present;
 * server or resource origin;
-* selected instrument class;
-* selected payment handler identifier, when provided;
 * payer authentication result, if any;
 * non-sensitive risk signal summary, if any;
 * payer consent text or consent hash, if any.
 
-Processors MUST reject token issuance if the payer is not authorized to use the
-selected instrument or account.
+Processors MUST reject token issuance if the payer is not authorized to use an
+eligible payment source under the selected processor profile.
 
 Processors SHOULD accept risk signals or risk-signal summaries from trusted
 agents, client enablers, sellers, or fraud systems. Risk signals MUST NOT weaken
 the allowance constraints. Processors MAY use risk signals to decline issuance,
-require step-up authentication, select a different instrument path, or annotate
-the token for redemption-time review.
+require step-up authentication, select an eligible payment path, or annotate the
+token for redemption-time review.
 
 Processors SHOULD expose enough token introspection or redemption error detail
 for servers to distinguish:
@@ -763,7 +707,6 @@ for servers to distinguish:
 * already-used token;
 * payee mismatch;
 * amount or currency mismatch;
-* unsupported instrument;
 * additional payer authentication required;
 * processor risk or compliance decline;
 * processor unavailable.
@@ -786,16 +729,14 @@ Servers MUST perform verification in this order:
    against server-side order state.
 7. Extract the SPT payload.
 8. Verify `processorId` is supported for the challenge.
-9. If `paymentHandlerId` is present or required, verify it matches a handler
-   offered in the challenge and still valid for server-side state.
-10. Verify any explicit `allowance` constraints are compatible with the order,
+9. Verify any explicit `allowance` constraints are compatible with the order,
     resource, or session state.
-11. Verify the SPT has not already been consumed by this server for a successful
+10. Verify the SPT has not already been consumed by this server for a successful
    settlement.
-12. Redeem or validate the SPT with the processor.
-13. Verify the processor response confirms the token scope covers the challenge
+11. Redeem or validate the SPT with the processor.
+12. Verify the processor response confirms the token scope covers the challenge
     amount, currency, payee, and other required binding dimensions.
-14. Mark the challenge as consumed only after successful settlement, or record
+13. Mark the challenge as consumed only after successful settlement, or record
     a pending idempotent attempt if the processor outcome is ambiguous.
 
 Servers MUST complete challenge validation before sending the SPT to a
@@ -824,7 +765,6 @@ For this profile, the decoded `request` SHOULD additionally bind:
 * payee identifier;
 * external identifier;
 * session identifier;
-* selected payment handler identifier, when applicable;
 * allowance constraints, when present;
 * token-binding nonce, when present.
 
@@ -977,7 +917,6 @@ The decoded receipt JSON contains:
 | `currency` | string | RECOMMENDED | Settlement currency. |
 | `externalId` | string | OPTIONAL | Server external identifier from the challenge. |
 | `payeeId` | string | OPTIONAL | Payee identifier, if safe to expose. |
-| `instrumentType` | string | OPTIONAL | High-level instrument class, if safe to expose. |
 
 Servers MUST NOT include a `Payment-Receipt` header on error responses.
 
@@ -1001,7 +940,6 @@ Recommended problem type suffixes:
 * `shared-payment-token-already-used`
 * `shared-payment-token-scope-mismatch`
 * `unsupported-processor`
-* `unsupported-instrument`
 * `payer-authentication-required`
 * `processor-declined`
 * `processor-unavailable`
@@ -1044,20 +982,8 @@ The discovery document SHOULD be JCS-compatible JSON:
     "supportsIdempotency": true,
     "supportsIntrospection": true
   },
-  "instrumentTypes": ["card", "wallet", "bank-account"],
   "assurance": ["payer-present", "step-up-if-required"],
   "settlementCapabilities": ["direct", "platform", "split"],
-  "paymentHandlers": [
-    {
-      "id": "examplepay-spt-card",
-      "version": "2026-06",
-      "processorId": "examplepay",
-      "usesDelegatedPayment": true,
-      "credentialTypes": ["shared-payment-token"],
-      "instrumentTypes": ["card", "wallet"],
-      "pciScope": "token-only"
-    }
-  ],
   "riskSignals": {
     "accepted": ["card-testing", "device", "account-age", "velocity"],
     "required": []
@@ -1245,7 +1171,7 @@ A conforming client enabler MUST:
 * parse Payment challenges using the Payment HTTP Authentication Scheme;
 * validate `method`, `intent`, `amount`, `currency`, payee, and expiry;
 * reject unsupported processors;
-* select only a processor or payment handler offered by the challenge;
+* select only a processor offered by the challenge;
 * obtain an SPT from a processor only after payer approval or delegated payer
   policy authorization;
 * include the SPT in `payload.sharedPaymentToken`;
@@ -1256,7 +1182,7 @@ A conforming client enabler SHOULD:
 
 * display payee, amount, currency, and resource origin when payer interaction is
   present;
-* support payment-handler negotiation when a challenge offers multiple handlers;
+* support processor selection when a challenge offers multiple processors;
 * request challenge binding dimensions from the processor;
 * pass non-sensitive risk signals to processors when requested and authorized;
 * support processor discovery;
@@ -1271,7 +1197,7 @@ A conforming server enabler MUST:
 * challenge-bind all security-relevant fields;
 * validate the challenge before sending the SPT to a processor;
 * redeem SPTs only with allowed processors;
-* reject credentials that select an unoffered or stale payment handler;
+* reject credentials that select an unoffered or stale processor;
 * use trusted server-side settlement policy;
 * enforce idempotency and replay protection;
 * return a `Payment-Receipt` only after successful settlement;
@@ -1303,7 +1229,7 @@ A conforming processor SHOULD:
 
 * support challenge identifier binding;
 * support request or digest binding;
-* publish payment-handler metadata or support equivalent bilateral
+* publish processor profile metadata or support equivalent bilateral
   configuration;
 * accept non-sensitive risk-signal summaries from trusted parties;
 * expose discovery metadata;
@@ -1377,11 +1303,13 @@ Decoded `request`:
       {
         "id": "examplepay",
         "origin": "https://processor.example",
+        "profile": "spt-charge-2026-06",
         "environment": "production"
       },
       {
         "id": "anotherpay",
         "origin": "https://payments.another.example",
+        "profile": "spt-charge-2026-06",
         "environment": "production"
       }
     ],
@@ -1392,27 +1320,6 @@ Decoded `request`:
       "country": "US",
       "category": "digital-services"
     },
-    "paymentHandlers": [
-      {
-        "id": "examplepay-wallet-or-card",
-        "processorId": "examplepay",
-        "usesDelegatedPayment": true,
-        "credentialTypes": ["shared-payment-token"],
-        "instrumentTypes": ["card", "wallet"],
-        "pciScope": "token-only",
-        "requiredInterventions": []
-      },
-      {
-        "id": "anotherpay-bank",
-        "processorId": "anotherpay",
-        "usesDelegatedPayment": true,
-        "credentialTypes": ["shared-payment-token"],
-        "instrumentTypes": ["bank-account"],
-        "pciScope": "token-only",
-        "requiredInterventions": ["payer-present"]
-      }
-    ],
-    "acceptedInstrumentTypes": ["card", "wallet"],
     "tokenBinding": {
       "required": [
         "challenge-id",
@@ -1477,11 +1384,9 @@ Decoded credential:
   "payload": {
     "sharedPaymentToken": "tok_shared_test_8xY2mN4qP",
     "processorId": "examplepay",
-    "paymentHandlerId": "examplepay-wallet-or-card",
     "tokenType": "shared-payment-token",
     "allowanceReference": "allow_72nP",
     "clientReference": "client_attempt_456",
-    "instrumentType": "wallet",
     "riskEvidence": {
       "signalsProvided": ["device", "velocity"],
       "decision": "authorized"
@@ -1504,8 +1409,7 @@ Decoded receipt:
   "amount": "5000",
   "currency": "usd",
   "externalId": "order_12345",
-  "payeeId": "payee_9k82h",
-  "instrumentType": "wallet"
+  "payeeId": "payee_9k82h"
 }
 ~~~
 
@@ -1543,8 +1447,6 @@ Content-Type: application/json
     "expires": "2026-06-19T19:30:00Z",
     "requestHash": "sha256:..."
   },
-  "instrumentType": "wallet",
-  "paymentHandlerId": "examplepay-wallet-or-card",
   "assurance": {
     "payerInteraction": "step-up-if-required"
   },
@@ -1587,7 +1489,6 @@ Content-Type: application/json
   "externalId": "order_12345",
   "sessionId": "session_abc123",
   "challengeId": "ch_7Jr8nVwS2mQ",
-  "paymentHandlerId": "examplepay-wallet-or-card",
   "settlementPolicy": {
     "mode": "platform",
     "policyRef": "merchant-policy-abc"

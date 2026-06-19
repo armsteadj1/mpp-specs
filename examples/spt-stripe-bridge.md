@@ -11,8 +11,7 @@ credential use the generic SPT shape.
 ## Flow
 
 1. Server returns a `402 Payment Required` challenge with `method="spt"`.
-2. The decoded request names Stripe as one supported processor and offers a
-   Stripe-backed payment handler.
+2. The decoded request names Stripe as one supported SPT processor.
 3. The client enabler creates a Stripe SPT scoped to the challenge allowance.
 4. The client submits the generic SPT credential containing the Stripe SPT.
 5. The server enabler redeems the token through its Stripe adapter.
@@ -62,6 +61,7 @@ Decoded `request`:
       {
         "id": "stripe",
         "origin": "https://api.stripe.com",
+        "profile": "spt-charge-2026-06",
         "environment": "production"
       }
     ],
@@ -72,18 +72,6 @@ Decoded `request`:
       "country": "US",
       "category": "digital-services"
     },
-    "paymentHandlers": [
-      {
-        "id": "stripe-spt-card-or-link",
-        "processorId": "stripe",
-        "usesDelegatedPayment": true,
-        "credentialTypes": ["shared-payment-token"],
-        "instrumentTypes": ["card", "wallet"],
-        "pciScope": "token-only",
-        "requiredInterventions": ["3ds", "sca", "step-up-if-required"]
-      }
-    ],
-    "acceptedInstrumentTypes": ["card", "wallet"],
     "tokenBinding": {
       "required": [
         "challenge-id",
@@ -117,8 +105,8 @@ Decoded `request`:
 The client enabler maps the generic allowance to Stripe SPT creation.
 The exact Stripe API shape may change; this is intentionally illustrative.
 The client enabler and Stripe use `exemptionContext` as advisory merchant input
-alongside processor-side payer, instrument, region, merchant configuration, and
-risk state to determine whether 3DS/SCA is required before issuing the SPT.
+alongside processor-side payer, region, merchant configuration, and risk state
+to determine whether 3DS/SCA is required before issuing the SPT.
 
 ~~~ javascript
 const sharedPaymentToken = await stripe.sharedPayment.issuedTokens.create({
@@ -157,11 +145,9 @@ opaque `sharedPaymentToken`.
   "payload": {
     "sharedPaymentToken": "spt_1N4Zv32eZvKYlo2CPhVPkJlW",
     "processorId": "stripe",
-    "paymentHandlerId": "stripe-spt-card-or-link",
     "tokenType": "shared-payment-token",
     "allowanceReference": "spt_1N4Zv32eZvKYlo2CPhVPkJlW",
     "clientReference": "client_attempt_456",
-    "instrumentType": "card",
     "assuranceEvidence": {
       "intervention": "3ds",
       "result": "completed",
@@ -226,15 +212,14 @@ Decoded `Payment-Receipt`:
   "amount": "5000",
   "currency": "usd",
   "externalId": "order_12345",
-  "payeeId": "profile_merchant_123",
-  "instrumentType": "card"
+  "payeeId": "profile_merchant_123"
 }
 ~~~
 
 ## Notes
 
 The generic SPT method does not standardize Stripe objects. It standardizes the
-challenge, credential, allowance, handler-selection, verification, settlement,
+challenge, credential, allowance, processor-selection, verification, settlement,
 and receipt contracts around an opaque processor-issued SPT.
 
 Other processors can use the same HTTP shape with their own token issuance and
